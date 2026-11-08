@@ -8,6 +8,14 @@ import { sanitizeClashProxyGroups } from '../src/builders/helpers/clashConfigUti
 const t = createTranslator('zh-CN');
 
 describe('Clash Builder Tests', () => {
+	it('should preserve X25519MLKEM768 support for VLESS Reality nodes', async () => {
+		const input = 'vless://00000000-0000-4000-8000-000000000001@example.com:443?encryption=none&security=reality&type=tcp&sni=www.microsoft.com&fp=chrome&pbk=test-public-key&sid=test-short-id&flow=xtls-rprx-vision&support-x25519mlkem768=true#Reality';
+		const builder = new ClashConfigBuilder(input, 'minimal', [], null, 'zh-CN', 'test-agent');
+		const built = yaml.load(await builder.build());
+
+		expect(built.proxies[0]['reality-opts']['support-x25519mlkem768']).toBe(true);
+	});
+
   it('should clean up proxy-groups and remove non-existent proxies', async () => {
     const input = `
 proxies:
