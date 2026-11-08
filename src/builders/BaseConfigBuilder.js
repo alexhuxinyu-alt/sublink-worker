@@ -177,7 +177,12 @@ export class BaseConfigBuilder {
             }
         }
 
-        return parsedItems;
+        return parsedItems.map(proxy => {
+            if (proxy && typeof proxy.tag === 'string') {
+                proxy.tag = proxy.tag.trim();
+            }
+            return proxy;
+        });
     }
 
     /**

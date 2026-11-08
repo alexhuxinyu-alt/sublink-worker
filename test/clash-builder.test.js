@@ -24,6 +24,14 @@ describe('Clash Builder Tests', () => {
 		expect(built.proxies[0].name).toBe('RackNerd(CloudFlareCDN)');
 	});
 
+	it('should trim whitespace from every parsed proxy protocol', async () => {
+		const input = 'ss://YWVzLTEyOC1nY206cGFzc3dvcmQ@example.com:443#RackNerd%28CloudFlareCDN%29%09';
+		const builder = new ClashConfigBuilder(input, 'minimal', [], null, 'zh-CN', 'test-agent');
+		const built = yaml.load(await builder.build());
+
+		expect(built.proxies[0].name).toBe('RackNerd(CloudFlareCDN)');
+	});
+
   it('should clean up proxy-groups and remove non-existent proxies', async () => {
     const input = `
 proxies:
