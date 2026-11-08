@@ -282,6 +282,7 @@ export function parseUrlParams(url) {
 	try {
 		name = decodeURIComponent(name);
 	} catch (error) { };
+	name = name.trim();
 
 	return { addressPart, params, name };
 }

@@ -16,6 +16,14 @@ describe('Clash Builder Tests', () => {
 		expect(built.proxies[0]['reality-opts']['support-x25519mlkem768']).toBe(true);
 	});
 
+	it('should trim whitespace from imported node names', async () => {
+		const input = 'vless://00000000-0000-4000-8000-000000000001@example.com:443?encryption=none&security=reality&type=tcp&sni=www.microsoft.com&fp=chrome&pbk=test-public-key&sid=test-short-id#RackNerd%28CloudFlareCDN%29%09';
+		const builder = new ClashConfigBuilder(input, 'minimal', [], null, 'zh-CN', 'test-agent');
+		const built = yaml.load(await builder.build());
+
+		expect(built.proxies[0].name).toBe('RackNerd(CloudFlareCDN)');
+	});
+
   it('should clean up proxy-groups and remove non-existent proxies', async () => {
     const input = `
 proxies:

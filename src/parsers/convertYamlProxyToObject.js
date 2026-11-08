@@ -1,7 +1,7 @@
 export function convertYamlProxyToObject(p) {
     if (!p || typeof p !== 'object' || !p.type) return null;
     const type = String(p.type).toLowerCase();
-    const name = p.name || p.tag || 'proxy';
+    const name = String(p.name || p.tag || 'proxy').trim();
     const toArray = (value) => {
         if (value === undefined || value === null) return undefined;
         return Array.isArray(value) ? value : [value];
