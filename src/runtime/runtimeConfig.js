@@ -40,7 +40,11 @@ export function normalizeRuntime(runtime = {}) {
         logger: runtime.logger ?? console,
         config: {
             configTtlSeconds: runtime.config?.configTtlSeconds ?? DEFAULTS.configTtlSeconds,
-            shortLinkTtlSeconds: runtime.config?.shortLinkTtlSeconds ?? null
+            shortLinkTtlSeconds: runtime.config?.shortLinkTtlSeconds ?? null,
+            authUsername: runtime.config?.authUsername,
+            authPassword: runtime.config?.authPassword,
+            authSessionSecret: runtime.config?.authSessionSecret,
+            authSessionHours: runtime.config?.authSessionHours ?? 24
         }
     };
 }

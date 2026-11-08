@@ -102,6 +102,8 @@ export const formLogicFn = (t) => {
             loading: false,
             generatedLinks: null,
             shortenedLinks: null,
+            qrCodeUrl: null,
+            qrCodeLabel: '',
             shortening: false,
             customShortCode: '',
             parsingUrl: false,
@@ -346,6 +348,7 @@ export const formLogicFn = (t) => {
                     this.input = '';
                     this.generatedLinks = null;
                     this.shortenedLinks = null;
+                    this.qrCodeUrl = null;
                     this.customShortCode = '';
                     // Also clear from localStorage
                     localStorage.removeItem('customShortCode');
@@ -365,6 +368,7 @@ export const formLogicFn = (t) => {
             async submitForm() {
                 this.loading = true;
                 this.shortenedLinks = null; // Reset shortened links when generating new links
+                this.qrCodeUrl = null;
                 try {
                     // Get custom rules from the child component via the hidden input
                     const customRulesInput = document.querySelector('input[name="customRules"]');
@@ -482,6 +486,21 @@ export const formLogicFn = (t) => {
                 } finally {
                     this.shortening = false;
                 }
+            },
+
+            showQr(type) {
+                const url = (this.shortenedLinks || this.generatedLinks)?.[type];
+                if (!url || typeof window.qrcode !== 'function') return;
+                this.qrCodeUrl = url;
+                this.qrCodeLabel = ({ xray: 'Xray', singbox: 'Sing-box', clash: 'Clash', surge: 'Surge' })[type] || type;
+                setTimeout(() => {
+                    const container = document.getElementById('subscription-qr-code');
+                    if (!container) return;
+                    const code = window.qrcode(0, 'M');
+                    code.addData(url);
+                    code.make();
+                    container.innerHTML = code.createImgTag(5, 8);
+                }, 0);
             },
 
             // Handle input change with debounce

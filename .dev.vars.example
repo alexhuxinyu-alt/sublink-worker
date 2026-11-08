@@ -1,0 +1,4 @@
+AUTH_USERNAME=replace-with-your-login-name
+AUTH_PASSWORD=replace-with-a-strong-password
+AUTH_SESSION_SECRET=replace-with-a-random-secret
+AUTH_SESSION_HOURS=24

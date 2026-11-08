@@ -6,6 +6,7 @@ import { Navbar } from '../components/Navbar.jsx';
 import { Form } from '../components/Form.jsx';
 import { Footer } from '../components/Footer.jsx';
 import { UpdateChecker } from '../components/UpdateChecker.jsx';
+import { Login } from '../components/Login.jsx';
 import { SingboxConfigBuilder } from '../builders/SingboxConfigBuilder.js';
 import { ClashConfigBuilder } from '../builders/ClashConfigBuilder.js';
 import { SurgeConfigBuilder } from '../builders/SurgeConfigBuilder.js';
@@ -16,6 +17,7 @@ import { ShortLinkService } from '../services/shortLinkService.js';
 import { ConfigStorageService } from '../services/configStorageService.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
+import { createSession, credentialsMatch, verifySession } from '../services/authService.js';
 import { PREDEFINED_RULE_SETS, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
 
 const DEFAULT_USER_AGENT = 'curl/7.74.0';
@@ -30,11 +32,35 @@ export function createApp(bindings = {}) {
     const app = new Hono();
 
     app.use('*', async (c, next) => {
+        if (!isAuthConfigured(runtime.config)) return next();
+        if (isPublicSubscriptionRoute(c.req.path) || c.req.path === '/login' || c.req.path === '/logout') return next();
+        const session = readCookie(c.req.header('Cookie'), 'sublink_session');
+        return await verifySession(session, runtime.config.authSessionSecret) ? next() : c.redirect('/login');
+    });
+
+    app.use('*', async (c, next) => {
         const acceptLanguage = getRequestHeader(c.req, 'Accept-Language');
         const lang = c.req.query('lang') || acceptLanguage?.split(',')[0] || 'zh-CN';
         c.set('lang', lang);
         c.set('t', createTranslator(lang));
         await next();
+    });
+
+    app.get('/login', (c) => c.html(<Login error={c.req.query('error') === '1'} />));
+    app.post('/login', async (c) => {
+        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is not configured.', 503);
+        const body = await c.req.parseBody();
+        const username = typeof body.username === 'string' ? body.username : '';
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!await credentialsMatch(username, password, runtime.config.authUsername, runtime.config.authPassword)) return c.redirect('/login?error=1');
+        const seconds = runtime.config.authSessionHours * 60 * 60;
+        const session = await createSession(username, runtime.config.authSessionSecret, Date.now() + seconds * 1000);
+        c.header('Set-Cookie', serializeCookie('sublink_session', session, seconds));
+        return c.redirect('/');
+    });
+    app.post('/logout', (c) => {
+        c.header('Set-Cookie', serializeCookie('sublink_session', '', 0));
+        return c.redirect('/login');
     });
 
     app.get('/', (c) => {
@@ -444,6 +470,16 @@ function parseJsonArray(raw) {
 function parseBooleanFlag(value) {
     return value === 'true' || value === true;
 }
+
+function isAuthConfigured(config) { return Boolean(config.authUsername && config.authPassword && config.authSessionSecret); }
+function isPublicSubscriptionRoute(path) { return ['/singbox', '/clash', '/surge', '/xray'].includes(path) || /^\/[bcxs]\/[a-zA-Z0-9_-]+$/.test(path); }
+function readCookie(header, name) {
+    if (!header) return null;
+    const prefix = `${name}=`;
+    const cookie = header.split(';').map(value => value.trim()).find(value => value.startsWith(prefix));
+    return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+}
+function serializeCookie(name, value, maxAge) { return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`; }
 
 function parseSemverLike(value) {
     if (typeof value !== 'string') {

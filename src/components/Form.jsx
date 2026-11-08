@@ -380,9 +380,16 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
               >
                 <i class="fas" x-bind:class={`copied === '${field.key}' ? 'fa-check' : 'fa-copy'`}></i>
               </button>
+              <button type="button" x-on:click={`showQr('${field.key}')`} class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-primary-100 hover:text-primary-600 transition-colors" title="显示二维码"><i class="fas fa-qrcode"></i></button>
             </div>
           </div>
         ))}
+      </div>
+
+      <div x-cloak x-show="qrCodeUrl" class="mt-6 rounded-xl border border-primary-100 bg-primary-50 p-5 text-center dark:border-primary-900/40 dark:bg-primary-900/10">
+        <p class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-200">扫码导入 <span x-text="qrCodeLabel"></span> 订阅</p>
+        <div id="subscription-qr-code" class="inline-flex rounded-lg bg-white p-3 shadow-sm"></div>
+        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">请妥善保管二维码和订阅链接，持有链接即可订阅。</p>
       </div>
 
       {/* Shortening Controls */}

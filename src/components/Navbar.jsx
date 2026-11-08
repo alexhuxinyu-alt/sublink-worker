@@ -30,6 +30,7 @@ export const Navbar = () => {
                             <i class="fab fa-github"></i>
                             <span>GitHub</span>
                         </a>
+                        <form method="post" action="/logout"><button class="px-3 py-2 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" type="submit">退出</button></form>
                         <button
                             class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
                             x-on:click="toggleDarkMode()"
