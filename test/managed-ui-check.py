@@ -15,8 +15,9 @@ with sync_playwright() as p:
     inner = base + '/clash?config=' + quote(first, safe='') + '&ua=example'
     response = page.request.get(base + '/shorten-v2?url=' + quote(inner, safe='') + '&shortCode=UITEST')
     assert response.ok
-    page.get_by_placeholder('粘贴本站已有的订阅短链接').fill(base + '/c/UITEST')
-    page.get_by_role('button', name='载入订阅').click()
+    page.get_by_role('button', name='刷新列表').click()
+    page.get_by_text(base + '/c/UITEST').wait_for()
+    page.get_by_role('button', name='选择编辑').click()
     page.locator('#managedSources').wait_for(state='visible')
     assert page.locator('#managedSources').input_value() == first
     page.locator('#managedSources').fill(second)

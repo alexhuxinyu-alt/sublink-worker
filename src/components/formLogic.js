@@ -112,6 +112,9 @@ export const formLogicFn = (t) => {
             managedOriginalQuery: '',
             managedBusy: false,
             managedMessage: '',
+            managedSubscriptions: [],
+            managedListMessage: '',
+            managedListBusy: false,
             parsingUrl: false,
             parseDebounceTimer: null,
             // These will be populated from window.APP_TRANSLATIONS
@@ -122,6 +125,7 @@ export const formLogicFn = (t) => {
             showFullLinksText: '',
 
             init() {
+                this.refreshManagedSubscriptions();
                 // Load translations
                 if (window.APP_TRANSLATIONS) {
                     this.processingText = window.APP_TRANSLATIONS.processing;
@@ -424,6 +428,33 @@ export const formLogicFn = (t) => {
                 } finally {
                     this.loading = false;
                 }
+            },
+
+            async refreshManagedSubscriptions() {
+                this.managedListBusy = true;
+                this.managedListMessage = '';
+                try {
+                    const entries = [];
+                    let cursor = null;
+                    do {
+                        const response = await fetch(`/manage-subscriptions${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { cache: 'no-store' });
+                        if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) throw new Error('订阅列表加载失败，请检查登录状态。');
+                        const page = await response.json();
+                        entries.push(...page.entries);
+                        cursor = page.cursor || null;
+                    } while (cursor);
+                    this.managedSubscriptions = entries;
+                    this.managedListMessage = entries.length ? '' : '暂时没有可管理的订阅。';
+                } catch (error) {
+                    this.managedListMessage = error.message || '订阅列表加载失败，请稍后重试。';
+                } finally {
+                    this.managedListBusy = false;
+                }
+            },
+
+            async selectManagedSubscription(code) {
+                this.managedLink = `${window.location.origin}/c/${code}`;
+                await this.loadManagedSubscription();
             },
 
             async loadManagedSubscription() {

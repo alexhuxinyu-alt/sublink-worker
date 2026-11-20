@@ -19,6 +19,30 @@ async function setup() {
 }
 
 describe('managing existing subscriptions', () => {
+    it('lists existing subscriptions only for authenticated users and omits backups and config files', async () => {
+        const { app, kv } = await setup();
+        await kv.put('__subscription_backup__:ALEX_TEST:1:test', original);
+        await kv.put('clash_random', '{"dns":{}}');
+        const cookie = `sublink_session=${await createSession('tester', secret, Date.now() + 60000)}`;
+        const response = await app.request('https://example.test/manage-subscriptions', { headers: { Cookie: cookie } });
+        expect(response.status).toBe(200);
+        expect(response.headers.get('cache-control')).toContain('no-store');
+        expect((await response.json()).entries).toEqual([{ code: 'ALEX_TEST', disabled: false }]);
+        expect((await app.request('https://example.test/manage-subscriptions')).status).toBe(302);
+    });
+
+    it('returns a cursor so subscriptions beyond the first page are accessible', async () => {
+        const { app, kv } = await setup();
+        for (let i = 0; i < 24; i++) await kv.put(`SUB${String(i).padStart(2, '0')}`, original);
+        const cookie = `sublink_session=${await createSession('tester', secret, Date.now() + 60000)}`;
+        const first = await (await app.request('https://example.test/manage-subscriptions', { headers: { Cookie: cookie } })).json();
+        expect(first.entries).toHaveLength(20);
+        expect(first.cursor).toBeTruthy();
+        const second = await (await app.request(`https://example.test/manage-subscriptions?cursor=${encodeURIComponent(first.cursor)}`, { headers: { Cookie: cookie } })).json();
+        expect(second.entries).toHaveLength(5);
+        expect(second.cursor).toBeNull();
+    });
+
     it('changes only the source list, preserves the address, and keeps a backup', async () => {
         const { app, kv, request } = await setup();
         const response = await request({ code: 'ALEX_TEST', originalQuery: original, sources: sourceB });

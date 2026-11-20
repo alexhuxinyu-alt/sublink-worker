@@ -358,6 +358,27 @@ export function createApp(bindings = {}) {
         }
     });
 
+    app.get('/manage-subscriptions', async (c) => {
+        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
+        if (!runtime.kv || typeof runtime.kv.list !== 'function') return c.text('Listing is not available for this storage', 501);
+        try {
+            const cursor = c.req.query('cursor');
+            if (cursor && cursor.length > 1024) return c.text('Invalid cursor', 400);
+            const page = await runtime.kv.list({ limit: 20, ...(cursor ? { cursor } : {}) });
+            const entries = await Promise.all(page.keys.map(async ({ name }) => {
+                if (!/^[a-zA-Z0-9_-]{1,128}$/.test(name) || name === 'TEST_258e5ba3d8693cf828a5e880') return null;
+                const value = await runtime.kv.get(name);
+                if (typeof value !== 'string' || !value.startsWith('?')) return null;
+                const params = new URLSearchParams(value);
+                return params.has('config') ? { code: name, disabled: params.get('config') === 'disabled' } : null;
+            }));
+            c.header('Cache-Control', 'private, no-store');
+            return c.json({ entries: entries.filter(Boolean), cursor: page.list_complete ? null : page.cursor });
+        } catch (error) {
+            return handleError(c, error, runtime.logger);
+        }
+    });
+
     // Keep the existing subscription address while changing only its sources.
     app.post('/manage-subscription', async (c) => {
         if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
