@@ -219,6 +219,8 @@ export const Form = (props) => {
       <div 
         class={`${CARD} flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors`}
         x-on:click="showAdvanced = !showAdvanced"
+        x-bind:aria-expanded="showAdvanced.toString()"
+        aria-controls="advancedOptions"
         role="button"
         tabindex="0"
         {...{
@@ -241,7 +243,7 @@ export const Form = (props) => {
       </div>
 
   {/* Advanced Options Content */ }
-  <div x-show="showAdvanced" {...{'x-transition:enter': 'transition ease-out duration-300', 'x-transition:enter-start': 'opacity-0 transform -translate-y-4', 'x-transition:enter-end': 'opacity-100 transform translate-y-0', 'x-transition:leave': 'transition ease-in duration-200', 'x-transition:leave-start': 'opacity-100 transform translate-y-0', 'x-transition:leave-end': 'opacity-0 transform -translate-y-4'}} class="space-y-6">
+  <div id="advancedOptions" x-cloak x-show="showAdvanced" {...{'x-transition:enter': 'transition ease-out duration-300', 'x-transition:enter-start': 'opacity-0 transform -translate-y-4', 'x-transition:enter-end': 'opacity-100 transform translate-y-0', 'x-transition:leave': 'transition ease-in duration-200', 'x-transition:leave-start': 'opacity-100 transform translate-y-0', 'x-transition:leave-end': 'opacity-0 transform -translate-y-4'}} class="space-y-6">
 
     {/* Rule Selection */ }
     <details class={`${CARD} group`}>

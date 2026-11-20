@@ -146,7 +146,6 @@ export const formLogicFn = (t) => {
 
                 // Load saved data
                 this.input = localStorage.getItem('inputTextarea') || '';
-                this.showAdvanced = localStorage.getItem('advancedToggle') === 'true';
                 this.groupByCountry = localStorage.getItem('groupByCountry') === 'true';
                 this.includeAutoSelect = localStorage.getItem('includeAutoSelect') !== 'false';
                 this.enableClashUI = localStorage.getItem('enableClashUI') === 'true';
@@ -177,7 +176,6 @@ export const formLogicFn = (t) => {
                     localStorage.setItem('inputTextarea', val);
                     this.handleInputChange(val);
                 });
-                this.$watch('showAdvanced', val => localStorage.setItem('advancedToggle', val));
                 this.$watch('groupByCountry', val => localStorage.setItem('groupByCountry', val));
                 this.$watch('includeAutoSelect', val => localStorage.setItem('includeAutoSelect', val));
                 this.$watch('enableClashUI', val => localStorage.setItem('enableClashUI', val));
