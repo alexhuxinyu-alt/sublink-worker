@@ -17,6 +17,26 @@ const CARD = 'rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 d
 const FIELD = 'rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-base text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-950/70 dark:text-white';
 const PRIMARY_BUTTON = 'inline-flex min-h-11 items-center justify-center rounded-xl bg-primary-700 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50';
 
+const RuleChoices = ({ t, model, onChange, disabled }) => (
+  <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    {UNIFIED_RULES.map((rule) => (
+      <label class="group flex cursor-pointer items-center rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50">
+        <input
+          type="checkbox"
+          value={rule.name}
+          x-model={model}
+          x-on:change={onChange}
+          x-bind:disabled={disabled}
+          class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+        />
+        <span class="ml-3 text-sm font-medium text-gray-700 transition-colors group-hover:text-gray-900 dark:text-gray-300 dark:group-hover:text-white">
+          {t(`outboundNames.${rule.name}`)}
+        </span>
+      </label>
+    ))}
+  </div>
+);
+
 export const Form = (props) => {
   const { t, lang } = props;
 
@@ -38,7 +58,13 @@ export const Form = (props) => {
     customShortCode: t('customShortCode'),
     optional: t('optional'),
     customShortCodePlaceholder: t('customShortCodePlaceholder'),
-    showFullLinks: t('showFullLinks')
+    showFullLinks: t('showFullLinks'),
+    rulePresetNames: {
+      minimal: t('minimal'),
+      balanced: t('balanced'),
+      comprehensive: t('comprehensive'),
+      custom: t('custom')
+    }
   };
 
   const scriptContent = `
@@ -111,13 +137,29 @@ export const Form = (props) => {
         <div class="mt-4 border-t border-gray-200 pt-4 dark:border-slate-700">
           <label for="managedLink" class="text-sm leading-relaxed text-gray-600 dark:text-gray-400">也可以粘贴其他格式的本站固定订阅链接：</label>
           <div class="mt-2 flex flex-col gap-2 sm:flex-row">
-            <input id="managedLink" type="url" x-model="managedLink" x-on:input="managedCode = ''; managedOriginalQuery = ''; managedSources = ''; managedMessage = ''" placeholder="粘贴本站已有的订阅短链接" class={`${FIELD} min-h-11 min-w-0 flex-1`} />
+            <input id="managedLink" type="url" x-model="managedLink" x-bind:disabled="managedBusy || managedRowBusy" x-on:input="managedCode = ''; managedOriginalQuery = ''; managedSources = ''; managedMessage = ''" placeholder="粘贴本站已有的订阅短链接" class={`${FIELD} min-h-11 min-w-0 flex-1`} />
             <button type="button" x-on:click="loadManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy" class={`${PRIMARY_BUTTON} shrink-0 whitespace-nowrap`}>载入订阅</button>
           </div>
         </div>
         <div x-cloak x-show="managedCode" class="mt-4">
           <label for="managedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">订阅来源（每行一个）</label>
-          <textarea id="managedSources" x-model="managedSources" rows="5" class={`${FIELD} mt-2 block w-full`}></textarea>
+          <textarea id="managedSources" x-model="managedSources" x-bind:disabled="managedBusy || managedRowBusy" rows="5" class={`${FIELD} mt-2 block w-full`}></textarea>
+          <details class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-slate-700">
+            <summary class="cursor-pointer text-sm font-medium text-gray-800 dark:text-gray-200">修改这条订阅的分流规则</summary>
+            <div class="mt-3">
+              <select aria-label="已有订阅的分流规则" x-model="managedRulePreset" x-on:change="applyManagedRulePreset()" x-bind:disabled="managedBusy || managedRowBusy" class={FIELD}>
+                <option value="keep">保留原规则</option>
+                <option value="minimal">{t('minimal')}</option>
+                <option value="balanced">{t('balanced')}</option>
+                <option value="comprehensive">{t('comprehensive')}</option>
+                <option value="custom">{t('custom')}</option>
+              </select>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">在这里调整内置分类。原来单独添加的自定义规则会保留。</p>
+              <div x-show="managedRulePreset === 'custom'">
+                <RuleChoices t={t} model="managedSelectedRules" disabled="managedBusy || managedRowBusy" />
+              </div>
+            </div>
+          </details>
           <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy || !managedSources.trim()" class={`${PRIMARY_BUTTON} mt-3`}>保存到原订阅</button>
         </div>
         <p x-cloak x-show="managedMessage" x-text="managedMessage" role="status" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></p>
@@ -199,38 +241,24 @@ export const Form = (props) => {
   <div x-show="showAdvanced" {...{'x-transition:enter': 'transition ease-out duration-300', 'x-transition:enter-start': 'opacity-0 transform -translate-y-4', 'x-transition:enter-end': 'opacity-100 transform translate-y-0', 'x-transition:leave': 'transition ease-in duration-200', 'x-transition:leave-start': 'opacity-100 transform translate-y-0', 'x-transition:leave-end': 'opacity-0 transform -translate-y-4'}} class="space-y-6">
 
     {/* Rule Selection */ }
-    <div class={CARD}>
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-          <i class="fas fa-filter text-gray-400"></i>
-          {t('ruleSelection')}
-        </h3>
-        <select x-model="selectedPredefinedRule" x-on:change="applyPredefinedRule()" class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-        <option value="custom">{t('custom')}</option>
-        <option value="minimal">{t('minimal')}</option>
-        <option value="balanced">{t('balanced')}</option>
-        <option value="comprehensive">{t('comprehensive')}</option>
-      </select>
-          </div>
+    <details class={`${CARD} group`}>
+      <summary class="flex cursor-pointer list-none flex-wrap items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white [&::-webkit-details-marker]:hidden">
+        <i class="fas fa-filter text-gray-400" aria-hidden="true"></i>
+        {t('ruleSelection')}
+        <span class="ml-auto text-sm font-medium text-gray-500 dark:text-gray-300" x-text="window.APP_TRANSLATIONS.rulePresetNames[selectedPredefinedRule]"></span>
+        <i class="fas fa-chevron-down text-xs text-gray-400 transition-transform group-open:rotate-180" aria-hidden="true"></i>
+      </summary>
+      <div class="mt-4 flex justify-end">
+        <select aria-label={t('ruleSelection')} x-model="selectedPredefinedRule" x-on:change="applyPredefinedRule()" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 focus:border-transparent focus:ring-2 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-200">
+          <option value="minimal">{t('minimal')}</option>
+          <option value="balanced">{t('balanced')}</option>
+          <option value="comprehensive">{t('comprehensive')}</option>
+          <option value="custom">{t('custom')}</option>
+        </select>
+      </div>
 
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-    {UNIFIED_RULES.map((rule) => (
-      <label class="flex items-center p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors group">
-        <input
-          type="checkbox"
-          value={rule.name}
-          x-model="selectedRules" 
-                    x-on:change="selectedPredefinedRule = 'custom'"
-        class="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600"
-                  />
-        <span class="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
-          {t(`outboundNames.${rule.name}`)}
-        </span>
-      </label>
-    ))}
-  </div>
-
-          </div>
+      <RuleChoices t={t} model="selectedRules" onChange="selectedPredefinedRule = 'custom'" />
+    </details>
 
   {/* Custom Rules Component */ }
   <CustomRules t={t} />

@@ -81,7 +81,7 @@ export const formLogicFn = (t) => {
                 ua: false          // User Agent
             },
             selectedRules: [],
-            selectedPredefinedRule: 'balanced',
+            selectedPredefinedRule: 'minimal',
             subconverterCopied: false,
             groupByCountry: false,
             includeAutoSelect: true,
@@ -111,6 +111,8 @@ export const formLogicFn = (t) => {
             managedCode: '',
             managedSources: '',
             managedOriginalQuery: '',
+            managedRulePreset: 'keep',
+            managedSelectedRules: [],
             managedBusy: false,
             managedMessage: '',
             managedSubscriptions: [],
@@ -546,6 +548,8 @@ export const formLogicFn = (t) => {
                     this.managedCode = match[1];
                     this.managedOriginalQuery = resolved.search;
                     this.managedSources = sources;
+                    this.managedRulePreset = 'keep';
+                    this.applyManagedRulePreset();
                     this.managedMessage = '已载入。每行一个订阅地址或节点；保存后固定链接不变。';
                     setTimeout(() => document.getElementById('managedSources')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
                 } catch (error) {
@@ -555,21 +559,49 @@ export const formLogicFn = (t) => {
                 }
             },
 
+            applyManagedRulePreset() {
+                const presets = window.PREDEFINED_RULE_SETS;
+                const choice = this.managedRulePreset;
+                if (choice === 'custom') return;
+                if (choice !== 'keep') {
+                    this.managedSelectedRules = [...presets[choice]];
+                    return;
+                }
+
+                const raw = new URLSearchParams(this.managedOriginalQuery).get('selectedRules');
+                let rules = Object.hasOwn(presets, raw) ? presets[raw] : null;
+                if (!rules && raw) {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) rules = parsed;
+                    } catch { /* Older links can omit the rule selection or store a preset name. */ }
+                }
+                this.managedSelectedRules = rules?.length ? rules.filter(name => presets.comprehensive.includes(name)) : [...presets.minimal];
+            },
+
             async saveManagedSubscription() {
-                if (!this.managedCode || !this.managedSources.trim() || this.managedBusy) return;
+                if (!this.managedCode || !this.managedSources.trim() || this.managedBusy || this.managedRowBusy) return;
+                const selectedRules = this.managedRulePreset === 'keep' ? undefined : [...new Set(this.managedSelectedRules)];
+                if (selectedRules?.length === 0) {
+                    this.managedMessage = '请至少选择一类规则，或选择保留原规则。';
+                    return;
+                }
                 this.managedBusy = true;
                 this.managedMessage = '';
                 try {
+                    const sources = this.managedSources.trim();
                     const response = await fetch('/manage-subscription', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code: this.managedCode, originalQuery: this.managedOriginalQuery, sources: this.managedSources })
+                        body: JSON.stringify({ code: this.managedCode, originalQuery: this.managedOriginalQuery, sources, selectedRules })
                     });
                     if (response.status === 409) throw new Error('订阅已被其他操作修改，请重新载入后再保存。');
-                    if (!response.ok) throw new Error('保存失败，原链接未确认更新，请重新载入检查。');
+                    if (!response.ok || response.redirected) throw new Error('保存失败，原链接未确认更新，请重新载入检查。');
                     const result = await response.json();
                     const params = new URLSearchParams(this.managedOriginalQuery);
-                    params.set('config', this.managedSources.trim());
+                    params.set('config', sources);
+                    if (selectedRules) params.set('selectedRules', JSON.stringify(selectedRules));
                     this.managedOriginalQuery = `?${params.toString()}`;
+                    this.managedRulePreset = 'keep';
                     this.managedMessage = result.updated ? '已保存。固定链接不变，客户端更新订阅后生效。' : '内容没有变化，固定链接保持不变。';
                 } catch (error) {
                     this.managedMessage = error.message || '保存失败，请重新载入检查。';

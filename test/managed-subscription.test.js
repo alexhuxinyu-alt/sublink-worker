@@ -133,6 +133,41 @@ describe('managing existing subscriptions', () => {
         expect(new URL(redirect.headers.get('location')).searchParams.get('config')).toBe(sourceB);
     });
 
+    it('updates explicit rule choices while preserving sources, custom rules and the short URL', async () => {
+        const { app, kv, request } = await setup();
+        const customRules = JSON.stringify([{ name: 'Example', domains: ['example.test'] }]);
+        const query = `${original}&customRules=${encodeURIComponent(customRules)}`;
+        await kv.put('ALEX_TEST', query);
+
+        const response = await request({
+            code: 'ALEX_TEST',
+            originalQuery: query,
+            sources: 'https://one.example/sub',
+            selectedRules: ['Location:CN', 'AI Services', 'Location:CN'],
+        });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ updated: true });
+
+        const redirect = await app.request('https://example.test/c/ALEX_TEST');
+        expect(redirect.status).toBe(302);
+        const params = new URL(redirect.headers.get('location')).searchParams;
+        expect(JSON.parse(params.get('selectedRules'))).toEqual(['Location:CN', 'AI Services']);
+        expect(params.get('customRules')).toBe(customRules);
+        expect(params.get('config')).toBe('https://one.example/sub');
+        expect(params.get('ua')).toBe('Test');
+        const backup = [...kv.store.entries()].find(([key]) => key.startsWith('__subscription_backup__:ALEX_TEST:'));
+        expect(backup?.[1]).toBe(query);
+    });
+
+    it('rejects invalid rule choices without modifying the subscription', async () => {
+        const { kv, request } = await setup();
+        for (const selectedRules of [[], null, 'minimal', ['Unknown'], [123]]) {
+            const response = await request({ code: 'ALEX_TEST', originalQuery: original, sources: sourceB, selectedRules });
+            expect(response.status).toBe(400);
+        }
+        expect(await kv.get('ALEX_TEST')).toBe(original);
+    });
+
     it('rejects stale edits, unknown codes, empty sources, unauthenticated and cross-origin requests', async () => {
         const { app, kv, request } = await setup();
         expect((await request({ code: 'ALEX_TEST', originalQuery: '?config=stale', sources: sourceB })).status).toBe(409);

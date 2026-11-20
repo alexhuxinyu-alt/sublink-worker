@@ -18,9 +18,10 @@ import { ConfigStorageService } from '../services/configStorageService.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { createSession, credentialsMatch, verifySession } from '../services/authService.js';
-import { PREDEFINED_RULE_SETS, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
+import { PREDEFINED_RULE_SETS, UNIFIED_RULES, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
 
 const DEFAULT_USER_AGENT = 'curl/7.74.0';
+const BUILT_IN_RULE_NAMES = new Set(UNIFIED_RULES.map(rule => rule.name));
 
 export function createApp(bindings = {}) {
     const runtime = normalizeRuntime(bindings);
@@ -449,17 +450,21 @@ export function createApp(bindings = {}) {
         }
     });
 
-    // Keep the existing subscription address while changing only its sources.
+    // Keep the same short code so existing clients can use the updated subscription.
     app.post('/manage-subscription', async (c) => {
         if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
         if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
         if (!(c.req.header('Content-Type') || '').toLowerCase().startsWith('application/json')) return c.text('Invalid content type', 415);
         try {
-            const { code, originalQuery, sources } = await c.req.json();
+            const { code, originalQuery, sources, selectedRules } = await c.req.json();
             if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code) ||
                 typeof originalQuery !== 'string' || !originalQuery.startsWith('?') || originalQuery.length > 64000 ||
                 typeof sources !== 'string' || !sources.trim() || sources.length > 48000) {
                 return c.text('Invalid subscription data', 400);
+            }
+            if (selectedRules !== undefined &&
+                (!Array.isArray(selectedRules) || selectedRules.length === 0 || selectedRules.some(name => !BUILT_IN_RULE_NAMES.has(name)))) {
+                return c.text('Invalid built-in rules', 400);
             }
             const service = requireShortLinkService(services.shortLinks);
             const current = await service.resolveShortCode(code);
@@ -468,9 +473,10 @@ export function createApp(bindings = {}) {
             const params = new URLSearchParams(current);
             if (!params.has('config')) return c.text('Subscription has no editable sources', 400);
             params.set('config', sources.trim());
+            if (selectedRules !== undefined) params.set('selectedRules', JSON.stringify([...new Set(selectedRules)]));
             const updatedQuery = `?${params.toString()}`;
             if (updatedQuery === current) return c.json({ updated: false });
-            // A separate backup makes accidental source changes recoverable.
+            // A separate backup makes accidental subscription edits recoverable.
             const backupKey = `__subscription_backup__:${code}:${Date.now()}:${crypto.randomUUID()}`;
             await runtime.kv.put(backupKey, current);
             if (await service.resolveShortCode(code) !== current) return c.text('Subscription changed; reload before saving', 409);
