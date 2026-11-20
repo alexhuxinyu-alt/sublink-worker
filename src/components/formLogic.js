@@ -116,6 +116,7 @@ export const formLogicFn = (t) => {
             managedSubscriptions: [],
             managedListMessage: '',
             managedListBusy: false,
+            managedRowBusy: false,
             managedKnownNames: '',
             parsingUrl: false,
             parseDebounceTimer: null,
@@ -433,6 +434,7 @@ export const formLogicFn = (t) => {
             },
 
             async refreshManagedSubscriptions() {
+                if (this.managedListBusy || this.managedRowBusy) return;
                 this.managedListBusy = true;
                 this.managedListMessage = '';
                 try {
@@ -466,12 +468,59 @@ export const formLogicFn = (t) => {
             },
 
             async saveSubscriptionRemark(subscription) {
+                if (this.managedRowBusy || this.managedListBusy) return;
+                this.managedRowBusy = true;
+                subscription.remarkError = false;
+                subscription.remarkStatus = '正在保存…';
+                const remark = subscription.remark.trim();
                 try {
-                    const response = await fetch('/manage-subscription-remark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: subscription.code, remark: subscription.remark }) });
-                    if (!response.ok) throw new Error('保存备注失败，请检查备注或登录状态。');
-                    await this.refreshManagedSubscriptions();
-                    this.managedListMessage = '备注已保存，订阅地址和节点未改变。';
-                } catch (error) { this.managedListMessage = error.message || '保存备注失败。'; }
+                    const response = await fetch('/manage-subscription-remark', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: subscription.code, remark })
+                    });
+                    if (!response.ok || response.redirected || !(await response.json()).saved) throw new Error('Remark was not saved');
+                    subscription.remark = remark;
+                    subscription.displayName = remark || subscription.inferredName;
+                    subscription.remarkStatus = remark ? '备注已保存' : '备注已清空';
+                } catch {
+                    subscription.remarkError = true;
+                    subscription.remarkStatus = '保存备注失败，请检查登录状态后重试。';
+                } finally {
+                    this.managedRowBusy = false;
+                }
+            },
+
+            async deleteManagedSubscription(subscription) {
+                if (!subscription.confirmDelete || this.managedRowBusy || this.managedListBusy || this.managedBusy) return;
+                this.managedRowBusy = true;
+                subscription.deleteStatus = '';
+                const code = subscription.code;
+                try {
+                    const response = await fetch('/manage-subscription-delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code })
+                    });
+                    if (response.status === 404 || response.status === 409) {
+                        subscription.deleteStatus = '这条订阅已变更，请刷新列表后核对。';
+                        return;
+                    }
+                    if (!response.ok || response.redirected || !(await response.json()).deleted) throw new Error('删除未确认，请刷新列表后核对。');
+                    this.managedSubscriptions = this.managedSubscriptions.filter(entry => entry.code !== code);
+                    this.managedListMessage = `已删除订阅「${subscription.displayName || '未识别'}」。`;
+                    if (this.managedCode === code) {
+                        this.managedLink = '';
+                        this.managedCode = '';
+                        this.managedOriginalQuery = '';
+                        this.managedSources = '';
+                        this.managedMessage = '';
+                    }
+                } catch {
+                    subscription.deleteStatus = '删除未确认，请刷新列表后核对。';
+                } finally {
+                    this.managedRowBusy = false;
+                }
             },
 
             async selectManagedSubscription(code) {

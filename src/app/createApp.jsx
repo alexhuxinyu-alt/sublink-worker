@@ -378,8 +378,8 @@ export function createApp(bindings = {}) {
                 if (!params.has('config')) return null;
                 let remark = '';
                 try { const stored = JSON.parse(await runtime.kv.get(`__subscription_remark__:${name}`) || '""'); if (typeof stored === 'string') remark = stored; } catch { /* Ignore invalid metadata. */ }
-                const displayName = remark || knownNames.find(n => name.length > n.length && name.toLowerCase().startsWith(n.toLowerCase())) || null;
-                return { code: name, displayName, remark, disabled: params.get('config') === 'disabled' };
+                const inferredName = knownNames.find(n => name.length > n.length && name.toLowerCase().startsWith(n.toLowerCase())) || null;
+                return { code: name, displayName: remark || inferredName, inferredName, remark, disabled: params.get('config') === 'disabled' };
             }));
             c.header('Cache-Control', 'private, no-store');
             return c.json({ entries: entries.filter(Boolean), knownNames, cursor: page.list_complete ? null : page.cursor });
@@ -413,6 +413,42 @@ export function createApp(bindings = {}) {
             await runtime.kv.put(`__subscription_remark__:${code}`, JSON.stringify(remark.trim()));
             return c.json({ saved: true });
         } catch (error) { return handleError(c, error, runtime.logger); }
+    });
+
+    app.post('/manage-subscription-delete', async (c) => {
+        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
+        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
+        const contentType = c.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+        if (contentType !== 'application/json') return c.text('Invalid content type', 415);
+        try {
+            const code = (await c.req.json())?.code;
+            if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code)) return c.text('Invalid short code', 400);
+
+            const service = requireShortLinkService(services.shortLinks);
+            const current = await service.resolveShortCode(code);
+            if (typeof current !== 'string' || !current.startsWith('?') || !new URLSearchParams(current).has('config')) {
+                return c.text('Subscription not found', 404);
+            }
+
+            const remarkKey = `__subscription_remark__:${code}`;
+            const remark = await runtime.kv.get(remarkKey);
+            // Keep a short recovery window without keeping a deleted subscription publicly accessible.
+            const backupKey = `__subscription_deleted__:${code}:${Date.now()}:${crypto.randomUUID()}`;
+            await runtime.kv.put(backupKey, JSON.stringify({ query: current, remark }), { expirationTtl: 30 * 24 * 60 * 60 });
+            if (await service.resolveShortCode(code) !== current) return c.text('Subscription changed; reload before deleting', 409);
+            await runtime.kv.delete(code);
+            if (remark !== null) {
+                try {
+                    await runtime.kv.delete(remarkKey);
+                } catch {
+                    runtime.logger.warn?.('Deleted short link but could not remove its remark');
+                }
+            }
+            return c.json({ deleted: true });
+        } catch (error) {
+            if (error instanceof SyntaxError) return c.text('Invalid JSON', 400);
+            return handleError(c, error, runtime.logger);
+        }
     });
 
     // Keep the existing subscription address while changing only its sources.

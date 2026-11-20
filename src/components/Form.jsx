@@ -56,29 +56,56 @@ export const Form = (props) => {
           <textarea x-model="managedKnownNames" rows="2" placeholder="例如 Alex, CSM, HYB" class="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"></textarea>
           <button type="button" x-on:click="saveManagedNames()" class="mt-2 rounded-lg bg-primary-600 px-4 py-2 text-white">保存识别名</button>
         </details>
-        <div class="mt-4 flex items-center justify-between gap-3">
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-200">已有订阅</span>
-          <button type="button" x-on:click="refreshManagedSubscriptions()" x-bind:disabled="managedListBusy" class="text-sm text-primary-600 disabled:opacity-50">刷新列表</button>
-        </div>
-        <p x-cloak x-show="managedListMessage" x-text="managedListMessage" class="mt-2 text-sm text-gray-500"></p>
-        <div class="mt-2 space-y-2">
-          <template x-for="subscription in managedSubscriptions" x-bind:key="subscription.code">
-            <div class="flex flex-col gap-2 rounded-lg bg-gray-50 p-3 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
-              <div class="min-w-0 flex-1"><div class="font-semibold text-gray-900 dark:text-white" x-text="subscription.displayName || '未识别'"></div><span class="break-all text-xs text-gray-500 dark:text-gray-400" x-text="`${window.location.origin}/c/${subscription.code}`"></span><div class="mt-2 flex gap-2"><input type="text" x-model="subscription.remark" maxlength="80" placeholder="填写备注名（选填）" class="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /><button type="button" x-on:click="saveSubscriptionRemark(subscription)" class="shrink-0 text-sm text-primary-600">保存备注</button></div></div>
-              <span x-cloak x-show="subscription.disabled" class="shrink-0 text-sm text-amber-600">来源已标记停用</span>
-              <button type="button" x-on:click="selectManagedSubscription(subscription.code)" x-bind:disabled="managedBusy" class="shrink-0 whitespace-nowrap rounded-lg bg-primary-600 px-4 py-2 text-sm text-white disabled:opacity-50">选择编辑</button>
+        <details class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            已有订阅 <span x-text="`（${managedSubscriptions.length}）`"></span>
+          </summary>
+          <div class="space-y-2 px-3 pb-3">
+            <div class="flex justify-end">
+              <button type="button" x-on:click="refreshManagedSubscriptions()" x-bind:disabled="managedListBusy || managedRowBusy" class="text-sm text-primary-600 dark:text-primary-400 disabled:opacity-50">刷新列表</button>
             </div>
-          </template>
-        </div>
+            <p x-cloak x-show="managedListMessage" x-text="managedListMessage" role="status" class="text-sm text-gray-600 dark:text-gray-300"></p>
+            <template x-for="subscription in managedSubscriptions" x-bind:key="subscription.code">
+              <details class="rounded-lg bg-gray-50 dark:bg-gray-900">
+                <summary class="cursor-pointer break-all px-3 py-2 font-semibold text-gray-900 dark:text-white">
+                  <span x-text="subscription.displayName || '未识别'"></span>
+                  <span x-cloak x-show="subscription.disabled" class="ml-2 text-sm font-normal text-amber-600 dark:text-amber-400">来源已标记停用</span>
+                </summary>
+                <div class="space-y-3 px-3 pb-3">
+                  <p class="break-all text-xs text-gray-500 dark:text-gray-400" x-text="`${window.location.origin}/c/${subscription.code}`"></p>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <input type="text" x-model="subscription.remark" x-on:input="subscription.remarkStatus = ''" x-bind:disabled="managedRowBusy" maxlength="80" aria-label="订阅备注名" placeholder="填写备注名（选填）" class="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+                      <button type="button" x-on:click="saveSubscriptionRemark(subscription)" x-bind:disabled="managedRowBusy || managedListBusy" class="shrink-0 text-sm text-primary-600 dark:text-primary-400 disabled:opacity-50">保存备注</button>
+                    </div>
+                    <p x-show="subscription.remarkStatus" x-text="subscription.remarkStatus" role="status" x-bind:class="subscription.remarkError ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'" class="mt-1 text-sm"></p>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button type="button" x-on:click="selectManagedSubscription(subscription.code)" x-bind:disabled="managedBusy || managedRowBusy" class="rounded-lg bg-primary-600 px-4 py-2 text-sm text-white disabled:opacity-50">选择编辑</button>
+                    <button type="button" x-on:click="subscription.confirmDelete = true" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" x-show="!subscription.confirmDelete" class="rounded-lg px-3 py-2 text-sm text-red-700 dark:text-red-400 disabled:opacity-50">删除订阅</button>
+                  </div>
+                  <div x-show="subscription.confirmDelete" class="rounded-lg border border-red-200 px-3 py-2 dark:border-red-900">
+                    <p class="text-sm text-red-800 dark:text-red-300">删除后，此短码的所有格式订阅链接都会失效，客户端将无法再更新。</p>
+                    <div class="mt-2 flex flex-wrap items-center gap-3">
+                      <button type="button" x-on:click="deleteManagedSubscription(subscription)" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" class="rounded-lg bg-red-700 px-3 py-1.5 text-sm text-white disabled:opacity-50">确认删除</button>
+                      <button type="button" x-on:click="subscription.confirmDelete = false; subscription.deleteStatus = ''" x-bind:disabled="managedRowBusy" class="text-sm text-gray-700 dark:text-gray-200 disabled:opacity-50">取消</button>
+                    </div>
+                    <p x-show="subscription.deleteStatus" x-text="subscription.deleteStatus" role="status" class="mt-1 text-sm text-red-700 dark:text-red-400"></p>
+                  </div>
+                </div>
+              </details>
+            </template>
+          </div>
+        </details>
         <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">也可以粘贴其他格式的本站固定订阅链接：</p>
         <div class="mt-4 flex flex-col gap-3 sm:flex-row">
           <input type="url" x-model="managedLink" x-on:input="managedCode = ''; managedOriginalQuery = ''; managedSources = ''; managedMessage = ''" placeholder="粘贴本站已有的订阅短链接" class="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-          <button type="button" x-on:click="loadManagedSubscription()" x-bind:disabled="managedBusy" class="shrink-0 whitespace-nowrap rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">载入订阅</button>
+          <button type="button" x-on:click="loadManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy" class="shrink-0 whitespace-nowrap rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">载入订阅</button>
         </div>
         <div x-cloak x-show="managedCode" class="mt-4">
           <label for="managedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">订阅来源（每行一个）</label>
           <textarea id="managedSources" x-model="managedSources" rows="5" class="mt-2 w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"></textarea>
-          <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || !managedSources.trim()" class="mt-3 rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">保存到原订阅</button>
+          <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy || !managedSources.trim()" class="mt-3 rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">保存到原订阅</button>
         </div>
         <p x-cloak x-show="managedMessage" x-text="managedMessage" role="status" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></p>
       </section>
