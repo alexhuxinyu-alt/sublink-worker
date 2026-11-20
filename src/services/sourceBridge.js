@@ -43,7 +43,7 @@ export function createSourceBridge(config) {
                     ...(body && { 'Content-Type': 'application/json' })
                 },
                 ...(body && { body: JSON.stringify(body) }),
-                redirect: 'error',
+                redirect: 'manual',
                 signal: AbortSignal.timeout(12000)
             });
         } catch (error) {

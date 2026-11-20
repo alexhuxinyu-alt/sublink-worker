@@ -34,7 +34,7 @@ describe('discovering private subscription sources', () => {
         expect(await response.json()).toEqual({ users: [{ email: 'GCL', servers: [{ id: 'test-1', name: 'Server 1' }] }], unavailable: [] });
         expect(fetchBridge.mock.calls[0][0].href).toBe(origin + '/api/integrations/sublink/catalog');
         expect(fetchBridge.mock.calls[0][1]).toMatchObject({
-            redirect: 'error',
+            redirect: 'manual',
             headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'Sublink-Source-Bridge/1.0' }
         });
     });
@@ -68,5 +68,16 @@ describe('discovering private subscription sources', () => {
         const response = await app.request(host + '/manage-source-catalog', { headers: admin });
         expect(response.status).toBe(502);
         expect(await response.text()).not.toContain('private upstream detail');
+    });
+
+    it('rejects an upstream redirect without following it', async () => {
+        const { app, admin } = await setup();
+        const fetchBridge = vi.fn(async () => Response.redirect('https://elsewhere.example'));
+        vi.stubGlobal('fetch', fetchBridge);
+        const response = await app.request(host + '/manage-source-catalog', { headers: admin });
+        expect(response.status).toBe(502);
+        expect(fetchBridge.mock.calls[0][1].redirect).toBe('manual');
+        expect(fetchBridge).toHaveBeenCalledTimes(1);
+        expect(response.headers.has('Location')).toBe(false);
     });
 });
