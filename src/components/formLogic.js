@@ -1,4 +1,142 @@
 export const formLogicFn = (t) => {
+    window.sourcePickerData = function (target) {
+        let request = null;
+        let editorCode = '';
+        const readSourceData = async (path, options, signal) => {
+            const response = await fetch(path, { ...options, signal, cache: 'no-store', redirect: 'error' });
+            if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) {
+                throw new Error('Source lookup failed');
+            }
+            return response.json();
+        };
+
+        return {
+            sourceUsers: [],
+            sourceUnavailable: [],
+            sourceEmail: '',
+            sourceServerIds: [],
+            sourcePreview: [],
+            sourceMessage: '',
+            sourceBusy: false,
+
+            async toggleSourcePicker(open) {
+                if (open) {
+                    editorCode = this.managedCode;
+                    await this.refreshSourceCatalog();
+                } else {
+                    this.destroy();
+                }
+            },
+
+            destroy() {
+                request?.abort();
+                request = null;
+                this.sourceBusy = false;
+                this.sourceUsers = [];
+                this.sourceUnavailable = [];
+                this.sourceEmail = '';
+                this.sourceServerIds = [];
+                this.clearSourcePreview();
+            },
+
+            async refreshSourceCatalog() {
+                if (this.sourceBusy) return;
+                this.destroy();
+                const current = request = new AbortController();
+                this.sourceBusy = true;
+                this.sourceMessage = '正在读取服务器上的客户端…';
+                try {
+                    const catalog = await readSourceData('/manage-source-catalog', {}, current.signal);
+                    if (request !== current) return;
+                    this.sourceUsers = catalog.users;
+                    this.sourceUnavailable = catalog.unavailable;
+                    this.sourceMessage = catalog.users.length ? '' : '暂时没有可选的客户端。';
+                } catch {
+                    if (request === current) this.sourceMessage = '无法读取服务器列表，请检查登录状态后重试。';
+                } finally {
+                    if (request === current) {
+                        request = null;
+                        this.sourceBusy = false;
+                    }
+                }
+            },
+
+            sourceServerChoices() {
+                return this.sourceUsers.find(user => user.email === this.sourceEmail)?.servers ?? [];
+            },
+
+            clearSourcePreview() {
+                this.sourcePreview = [];
+                this.sourceMessage = '';
+            },
+
+            async previewSourceLinks() {
+                if (this.sourceBusy || !this.sourceEmail || !this.sourceServerIds.length) return;
+                if (target === 'managed' && this.sourceUnavailable.length) {
+                    this.sourceMessage = '有服务器尚未同步，当前草稿已保留。请刷新后再试。';
+                    return;
+                }
+                const servers = [...this.sourceServerIds];
+                const names = new Map(this.sourceServerChoices().map(server => [server.id, server.name]));
+                const current = request = new AbortController();
+                this.clearSourcePreview();
+                this.sourceBusy = true;
+                this.sourceMessage = '正在读取所选来源…';
+                try {
+                    const result = await readSourceData('/manage-source-links', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: this.sourceEmail, servers })
+                    }, current.signal);
+                    if (request !== current) return;
+                    if (result.unavailable.some(server => target === 'managed' || servers.includes(server.id))) {
+                        throw new Error('Source unavailable');
+                    }
+                    const sources = new Map(servers.map(id => [id, []]));
+                    for (const source of result.sources) {
+                        const matches = sources.get(source.serverId);
+                        if (!matches) continue;
+                        const url = new URL(source.url);
+                        if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid source URL');
+                        matches.push(url.href);
+                    }
+                    this.sourcePreview = servers.map(id => {
+                        const urls = sources.get(id);
+                        if (!urls.length || !names.has(id)) throw new Error('Selected source is missing');
+                        return { id, name: names.get(id), urls };
+                    });
+                    this.sourceMessage = '';
+                } catch {
+                    if (request === current) this.sourceMessage = '所选服务器有来源不可用，当前草稿已保留。请刷新后重试。';
+                } finally {
+                    if (request === current) {
+                        request = null;
+                        this.sourceBusy = false;
+                    }
+                }
+            },
+
+            applySourcePreview() {
+                if (this.sourceBusy || !this.sourcePreview.length) return;
+                const draft = [...new Set(this.sourcePreview.flatMap(source => source.urls))].join('\n');
+                if (target === 'managed') {
+                    if (!editorCode || this.managedCode !== editorCode || this.managedBusy || this.managedRowBusy) return;
+                    this.managedSources = draft;
+                    this.managedMessage = '';
+                } else {
+                    this.inputFromSourcePicker = true;
+                    clearTimeout(this.parseDebounceTimer);
+                    this.input = draft;
+                    this.generatedLinks = null;
+                    this.shortenedLinks = null;
+                    this.qrCodeUrl = null;
+                }
+                this.clearSourcePreview();
+                this.sourceMessage = '已填入草稿，可以继续核对。';
+            }
+        };
+    };
+
     window.formData = function () {
         // Inline parseSurgeConfigInput to make it available in toString()
         const parseSurgeValue = (rawValue = '') => {
@@ -71,6 +209,7 @@ export const formLogicFn = (t) => {
 
         return {
             input: '',
+            inputFromSourcePicker: false,
             showAdvanced: false,
             // Accordion states for each section (二级手风琴状态)
             accordionSections: {
@@ -173,8 +312,11 @@ export const formLogicFn = (t) => {
 
                 // Watchers to save state
                 this.$watch('input', val => {
-                    localStorage.setItem('inputTextarea', val);
-                    this.handleInputChange(val);
+                    if (!val) this.inputFromSourcePicker = false;
+                    if (!this.inputFromSourcePicker) {
+                        localStorage.setItem('inputTextarea', val);
+                        this.handleInputChange(val);
+                    }
                 });
                 this.$watch('groupByCountry', val => localStorage.setItem('groupByCountry', val));
                 this.$watch('includeAutoSelect', val => localStorage.setItem('includeAutoSelect', val));
@@ -787,6 +929,7 @@ export const formLogicFn = (t) => {
                     }
 
                     // Now parse the full URL and populate form
+                    if (this.inputFromSourcePicker || this.input.trim() !== text) return;
                     this.populateFormFromUrl(urlToParse);
 
                     // Show a success message

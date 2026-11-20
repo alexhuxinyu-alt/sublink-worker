@@ -27,6 +27,43 @@ with sync_playwright() as p:
     assert len(clash_links) == 1
     generated_rules = parse_qs(urlsplit(clash_links[0]).query)['selectedRules'][0]
     assert json.loads(generated_rules) == ['Location:CN', 'Private', 'Non-China']
+
+    catalog = {
+        'users': [
+            {'email': 'TEST-EMAIL', 'servers': [{'id': 'a', 'name': '测试甲'}, {'id': 'b', 'name': '测试乙'}]},
+            {'email': 'test-email', 'servers': [{'id': 'c', 'name': '测试丙'}]},
+        ],
+        'unavailable': [],
+    }
+    source_links = {'a': 'https://one.example/sub/TEST_A', 'b': 'https://two.example/sub/TEST_B'}
+    source_requests = []
+    fixture = {'partial': False}
+
+    def fulfill_sources(route):
+        assert route.request.method == 'POST'
+        lookup = route.request.post_data_json
+        source_requests.append(lookup)
+        sources = [{'serverId': server, 'url': source_links[server]} for server in lookup['servers']
+                   if not fixture['partial'] or server != 'b']
+        route.fulfill(json={'sources': sources, 'unavailable': [{'id': 'b', 'name': '测试乙'}] if fixture['partial'] else []})
+
+    page.route('**/manage-source-catalog', lambda route: route.fulfill(json=catalog))
+    page.route('**/manage-source-links', fulfill_sources)
+    new_picker = page.locator('form details').filter(has_text='从 3x-ui 选来源')
+    new_picker.locator('summary').click()
+    new_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
+    expect(new_picker.get_by_role('checkbox', name='测试丙')).to_have_count(0)
+    for server in ('测试甲', '测试乙'):
+        new_picker.get_by_role('checkbox', name=server).check()
+    new_picker.get_by_role('button', name='预览来源').click()
+    expect(new_picker.get_by_text('将填入的来源')).to_be_visible()
+    assert source_requests[-1] == {'email': 'TEST-EMAIL', 'servers': ['a', 'b']}
+    expect(page.locator('#input')).to_have_value(first)
+    new_picker.get_by_role('button', name='填入输入框').click()
+    expect(page.locator('#input')).to_have_value('\n'.join(source_links.values()))
+    assert page.evaluate("localStorage.getItem('inputTextarea')") == first
+    new_picker.locator('summary').click()
+
     page.get_by_role('button', name='高级选项').click()
     rule_picker = page.get_by_role('combobox', name='规则选择', include_hidden=True)
     expect(rule_picker).to_be_hidden()
@@ -57,6 +94,22 @@ with sync_playwright() as p:
     row.get_by_role('button', name='选择编辑').click()
     page.locator('#managedSources').wait_for(state='visible')
     assert page.locator('#managedSources').input_value() == first
+    managed_picker = page.locator('section details').filter(has=page.locator('summary').filter(has_text='从 3x-ui 选来源'))
+    managed_picker.locator('summary').click()
+    managed_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
+    managed_picker.get_by_role('checkbox', name='测试乙').check()
+    fixture['partial'] = True
+    managed_picker.get_by_role('button', name='预览来源').click()
+    expect(managed_picker.get_by_role('status')).to_contain_text('当前草稿已保留')
+    expect(managed_picker.get_by_role('button', name='替换来源草稿')).to_be_hidden()
+    expect(page.locator('#managedSources')).to_have_value(first)
+    fixture['partial'] = False
+    managed_picker.get_by_role('button', name='预览来源').click()
+    managed_picker.get_by_role('button', name='替换来源草稿').click()
+    expect(page.locator('#managedSources')).to_have_value(source_links['b'])
+    resolve = page.request.get(base + '/resolve?url=' + quote(link, safe='')).json()
+    assert parse_qs(urlsplit(resolve['originalUrl']).query)['config'] == [first]
+
     page.locator('#managedSources').fill(second)
     page.locator('summary').filter(has_text='修改这条订阅的分流规则').click()
     preset = page.get_by_label('已有订阅的分流规则')
@@ -102,5 +155,5 @@ with sync_playwright() as p:
     expect(page.locator('#managedSources')).to_be_hidden()
     for prefix in 'bcxs':
         assert page.request.get(f'{base}/{prefix}/{code}').status == 404
-    print('UI passed: cancel discards sources and rules, plus remarks, saving and deletion')
+    print('UI passed: source preview and draft apply, partial-source failure, cancel, remarks, saving and deletion')
     browser.close()

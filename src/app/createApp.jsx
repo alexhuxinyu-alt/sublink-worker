@@ -15,6 +15,7 @@ import { encodeBase64, tryDecodeSubscriptionLines } from '../utils.js';
 import { APP_NAME, APP_SUBTITLE } from '../constants.js';
 import { ShortLinkService } from '../services/shortLinkService.js';
 import { ConfigStorageService } from '../services/configStorageService.js';
+import { createSourceBridge, isSourceLookup } from '../services/sourceBridge.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { createSession, credentialsMatch, verifySession } from '../services/authService.js';
@@ -31,6 +32,7 @@ export function createApp(bindings = {}) {
         shortLinks: runtime.kv ? new ShortLinkService(runtime.kv, { shortLinkTtlSeconds: runtime.config.shortLinkTtlSeconds }) : null,
         configStorage: runtime.kv ? new ConfigStorageService(runtime.kv, { configTtlSeconds: runtime.config.configTtlSeconds }) : null
     };
+    const sourceBridge = createSourceBridge(runtime.config);
 
     const app = new Hono();
 
@@ -96,7 +98,7 @@ export function createApp(bindings = {}) {
                                     {subtitle}
                                 </p>
                             </header>
-                            <Form t={t} lang={lang} />
+                            <Form t={t} lang={lang} sourceBridgeEnabled={Boolean(sourceBridge && isAuthConfigured(runtime.config))} />
                         </div>
                     </main>
                     <Footer />
@@ -372,6 +374,29 @@ export function createApp(bindings = {}) {
             return c.text(code);
         } catch (error) {
             return handleError(c, error, runtime.logger);
+        }
+    });
+
+    app.get('/manage-source-catalog', async (c) => {
+        if (!isAuthConfigured(runtime.config) || !sourceBridge) return c.text('Source sync is not configured', 503);
+        try {
+            return c.json(await sourceBridge.catalog());
+        } catch {
+            return c.text('Source catalog is temporarily unavailable', 502);
+        }
+    });
+
+    app.post('/manage-source-links', async (c) => {
+        if (!isAuthConfigured(runtime.config) || !sourceBridge) return c.text('Source sync is not configured', 503);
+        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
+        const contentType = c.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+        if (contentType !== 'application/json') return c.text('Invalid content type', 415);
+        const lookup = await c.req.json().catch(() => null);
+        if (!isSourceLookup(lookup)) return c.text('Invalid source lookup', 400);
+        try {
+            return c.json(await sourceBridge.sources(lookup));
+        } catch {
+            return c.text('Subscription sources are temporarily unavailable', 502);
         }
     });
 

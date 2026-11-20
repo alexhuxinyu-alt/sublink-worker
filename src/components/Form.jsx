@@ -16,6 +16,58 @@ const LINK_FIELDS = [
 const CARD = 'rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-slate-700/80 dark:bg-slate-900/80';
 const FIELD = 'rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-base text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-950/70 dark:text-white';
 const PRIMARY_BUTTON = 'inline-flex min-h-11 items-center justify-center rounded-xl bg-primary-700 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50';
+const SECONDARY_BUTTON = 'min-h-10 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50 dark:border-slate-600 dark:text-gray-200 dark:hover:bg-slate-800';
+
+const SourcePicker = ({ target }) => (
+  <details
+    x-data={`sourcePickerData('${target}')`}
+    x-on:toggle="toggleSourcePicker($el.open)"
+    class="mb-3 rounded-xl border border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-950/60"
+  >
+    <summary class="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium text-gray-800 marker:text-primary-600 dark:text-gray-200 dark:marker:text-primary-400">从 3x-ui 选来源</summary>
+    <div class="space-y-3 px-3 pb-3 text-sm text-gray-600 dark:text-gray-300">
+      <p>按客户端 Email 匹配。选好服务器后，先预览再填入草稿。</p>
+      <label x-show="sourceUsers.length" class="block">
+        <span class="mb-1 block font-medium">客户端 Email</span>
+        <select x-model="sourceEmail" x-on:change="sourceServerIds = []; clearSourcePreview()" x-bind:disabled="sourceBusy" class={`${FIELD} w-full`}>
+          <option value="">选择用户</option>
+          <template x-for="user in sourceUsers" x-bind:key="user.email">
+            <option x-bind:value="user.email" x-text="user.email"></option>
+          </template>
+        </select>
+      </label>
+      <fieldset x-show="sourceEmail" x-bind:disabled="sourceBusy" class="space-y-2">
+        <legend class="font-medium">服务器</legend>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="server in sourceServerChoices()" x-bind:key="server.id">
+            <label class="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 dark:border-slate-700">
+              <input type="checkbox" x-bind:value="server.id" x-model="sourceServerIds" x-on:change="clearSourcePreview()" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <span x-text="server.name"></span>
+            </label>
+          </template>
+        </div>
+      </fieldset>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" x-show="sourceUsers.length" x-on:click="previewSourceLinks()" x-bind:disabled="sourceBusy || !sourceServerIds.length" class={SECONDARY_BUTTON}>预览来源</button>
+        <button type="button" x-on:click="refreshSourceCatalog()" x-bind:disabled="sourceBusy" class={SECONDARY_BUTTON}>刷新服务器列表</button>
+      </div>
+      <p x-show="sourceUnavailable.length" class="text-amber-700 dark:text-amber-300">
+        暂未同步的服务器：<span x-text="sourceUnavailable.map(server => server.name).join('、')"></span>
+      </p>
+      <p x-show="sourceMessage" x-text="sourceMessage" role="status"></p>
+      <div x-show="sourcePreview.length" class="space-y-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+        <p class="font-medium">将填入的来源</p>
+        <ul class="list-inside list-disc">
+          <template x-for="source in sourcePreview" x-bind:key="source.id">
+            <li x-text="source.name"></li>
+          </template>
+        </ul>
+        <p>{target === 'managed' ? '填入会替换下方来源草稿，点击「保存到原订阅」才会更新订阅。' : '填入会替换输入框里的内容，可以核对后再点击「转换」。'}</p>
+        <button type="button" x-on:click="applySourcePreview()" x-bind:disabled="sourceBusy" class={PRIMARY_BUTTON}>{target === 'managed' ? '替换来源草稿' : '填入输入框'}</button>
+      </div>
+    </div>
+  </details>
+);
 
 const RuleChoices = ({ t, model, onChange, disabled }) => (
   <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -38,7 +90,7 @@ const RuleChoices = ({ t, model, onChange, disabled }) => (
 );
 
 export const Form = (props) => {
-  const { t, lang } = props;
+  const { t, lang, sourceBridgeEnabled } = props;
 
   const translations = {
     processing: t('processing'),
@@ -142,6 +194,11 @@ export const Form = (props) => {
           </div>
         </div>
         <div x-cloak x-show="managedCode" class="mt-4">
+          {sourceBridgeEnabled && (
+            <template x-if="managedCode">
+              <SourcePicker target="managed" />
+            </template>
+          )}
           <label for="managedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">订阅来源（每行一个）</label>
           <textarea id="managedSources" x-model="managedSources" x-bind:disabled="managedBusy || managedRowBusy" rows="5" class={`${FIELD} mt-2 block w-full`}></textarea>
           <details x-ref="managedRuleOptions" class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-slate-700">
@@ -171,6 +228,7 @@ export const Form = (props) => {
 
       {/* Input Section */}
       <div class={CARD}>
+        {sourceBridgeEnabled && <SourcePicker target="new" />}
         <TextareaWithActions
           id="input"
           name="input"
