@@ -106,6 +106,7 @@ export const formLogicFn = (t) => {
             qrCodeLabel: '',
             shortening: false,
             customShortCode: '',
+            newSubscriptionRemark: '',
             managedLink: '',
             managedCode: '',
             managedSources: '',
@@ -115,6 +116,7 @@ export const formLogicFn = (t) => {
             managedSubscriptions: [],
             managedListMessage: '',
             managedListBusy: false,
+            managedKnownNames: '',
             parsingUrl: false,
             parseDebounceTimer: null,
             // These will be populated from window.APP_TRANSLATIONS
@@ -441,6 +443,7 @@ export const formLogicFn = (t) => {
                         if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) throw new Error('订阅列表加载失败，请检查登录状态。');
                         const page = await response.json();
                         entries.push(...page.entries);
+                        if (Array.isArray(page.knownNames)) this.managedKnownNames = page.knownNames.join(', ');
                         cursor = page.cursor || null;
                     } while (cursor);
                     this.managedSubscriptions = entries;
@@ -450,6 +453,25 @@ export const formLogicFn = (t) => {
                 } finally {
                     this.managedListBusy = false;
                 }
+            },
+
+            async saveManagedNames() {
+                try {
+                    const names = this.managedKnownNames.split(/[\s,，]+/).map(x => x.trim()).filter(Boolean);
+                    const response = await fetch('/manage-subscription-names', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names }) });
+                    if (!response.ok) throw new Error('保存识别名失败，请检查名称。');
+                    await this.refreshManagedSubscriptions();
+                    this.managedListMessage = '识别名已保存；没有匹配的链接会显示未识别。';
+                } catch (error) { this.managedListMessage = error.message || '保存失败，请稍后重试。'; }
+            },
+
+            async saveSubscriptionRemark(subscription) {
+                try {
+                    const response = await fetch('/manage-subscription-remark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: subscription.code, remark: subscription.remark }) });
+                    if (!response.ok) throw new Error('保存备注失败，请检查备注或登录状态。');
+                    await this.refreshManagedSubscriptions();
+                    this.managedListMessage = '备注已保存，订阅地址和节点未改变。';
+                } catch (error) { this.managedListMessage = error.message || '保存备注失败。'; }
             },
 
             async selectManagedSubscription(code) {
@@ -567,6 +589,11 @@ export const formLogicFn = (t) => {
                     }
 
                     this.shortenedLinks = shortened;
+                    if (this.newSubscriptionRemark.trim()) {
+                        const saved = await fetch('/manage-subscription-remark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: shortCode, remark: this.newSubscriptionRemark }) });
+                        if (!saved.ok) alert('短链接已生成，但备注保存失败。你可以在上方已有订阅中重新设置备注。');
+                        else { this.newSubscriptionRemark = ''; await this.refreshManagedSubscriptions(); }
+                    }
                 } catch (error) {
                     console.error('Error shortening links:', error);
                     alert(window.APP_TRANSLATIONS.shortenFailed);

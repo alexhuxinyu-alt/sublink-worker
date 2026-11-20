@@ -27,8 +27,36 @@ describe('managing existing subscriptions', () => {
         const response = await app.request('https://example.test/manage-subscriptions', { headers: { Cookie: cookie } });
         expect(response.status).toBe(200);
         expect(response.headers.get('cache-control')).toContain('no-store');
-        expect((await response.json()).entries).toEqual([{ code: 'ALEX_TEST', disabled: false }]);
+        expect((await response.json()).entries).toEqual([{ code: 'ALEX_TEST', displayName: null, remark: '', disabled: false }]);
         expect((await app.request('https://example.test/manage-subscriptions')).status).toBe(302);
+    });
+
+    it('uses the longest configured name prefix, and protects name updates', async () => {
+        const { app, kv } = await setup();
+        await kv.put('CSMF9D5Y7B6', original);
+        const cookie = `sublink_session=${await createSession('tester', secret, Date.now() + 60000)}`;
+        const url = 'https://example.test/manage-subscription-names';
+        const headers = { Cookie: cookie, Origin: 'https://example.test', 'Content-Type': 'application/json' };
+        expect((await app.request(url, { method: 'POST', headers: { ...headers, Origin: 'https://elsewhere.test' }, body: JSON.stringify({names:['CSM']}) })).status).toBe(403);
+        expect((await app.request(url, { method: 'POST', headers, body: JSON.stringify({names:['C','CSM','Alex']}) })).status).toBe(200);
+        const entries = (await (await app.request('https://example.test/manage-subscriptions', { headers: { Cookie: cookie } })).json()).entries;
+        expect(entries.find(x => x.code === 'CSMF9D5Y7B6').displayName).toBe('CSM');
+        expect(entries.find(x => x.code === 'ALEX_TEST').displayName).toBe('Alex');
+    });
+
+    it('stores private remarks separately, overrides the inferred name, and leaves the subscription intact', async () => {
+        const { app, kv } = await setup();
+        const cookie = `sublink_session=${await createSession('tester', secret, Date.now() + 60000)}`;
+        const headers = { Cookie: cookie, Origin: 'https://example.test', 'Content-Type': 'application/json' };
+        const url = 'https://example.test/manage-subscription-remark';
+        const body = JSON.stringify({ code: 'ALEX_TEST', remark: '家人手机' });
+        expect((await app.request(url, { method: 'POST', headers: { ...headers, Origin: 'https://elsewhere.test' }, body })).status).toBe(403);
+        expect((await app.request(url, { method: 'POST', headers: { Origin: 'https://example.test', 'Content-Type': 'application/json' }, body })).status).toBe(302);
+        expect((await app.request(url, { method: 'POST', headers, body })).status).toBe(200);
+        const entries = (await (await app.request('https://example.test/manage-subscriptions', { headers: { Cookie: cookie } })).json()).entries;
+        expect(entries.find(x => x.code === 'ALEX_TEST')).toMatchObject({ displayName: '家人手机', remark: '家人手机' });
+        expect(await kv.get('ALEX_TEST')).toBe(original);
+        expect((await app.request(url, { method: 'POST', headers, body: JSON.stringify({ code: 'ALEX_TEST', remark: '' }) })).status).toBe(200);
     });
 
     it('returns a cursor so subscriptions beyond the first page are accessible', async () => {

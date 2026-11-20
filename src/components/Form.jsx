@@ -49,7 +49,13 @@ export const Form = (props) => {
     <div x-data="formData()" x-init="init()" class="max-w-4xl mx-auto">
       <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">编辑已有订阅</h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">选择已有订阅后增删来源，保存后原来的链接保持不变。短码不一定是用户名。</p>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">优先显示你填写的备注，否则按短码前缀识别；编辑来源后链接保持不变。</p>
+        <details class="mt-3 text-sm text-gray-600 dark:text-gray-300">
+          <summary class="cursor-pointer">管理用户识别名</summary>
+          <p class="mt-2">用逗号或空格分隔用户名。新用户可在此添加；系统按最长前缀匹配。</p>
+          <textarea x-model="managedKnownNames" rows="2" placeholder="例如 Alex, CSM, HYB" class="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"></textarea>
+          <button type="button" x-on:click="saveManagedNames()" class="mt-2 rounded-lg bg-primary-600 px-4 py-2 text-white">保存识别名</button>
+        </details>
         <div class="mt-4 flex items-center justify-between gap-3">
           <span class="text-sm font-medium text-gray-700 dark:text-gray-200">已有订阅</span>
           <button type="button" x-on:click="refreshManagedSubscriptions()" x-bind:disabled="managedListBusy" class="text-sm text-primary-600 disabled:opacity-50">刷新列表</button>
@@ -58,7 +64,7 @@ export const Form = (props) => {
         <div class="mt-2 space-y-2">
           <template x-for="subscription in managedSubscriptions" x-bind:key="subscription.code">
             <div class="flex flex-col gap-2 rounded-lg bg-gray-50 p-3 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
-              <span class="break-all text-sm text-gray-700 dark:text-gray-200" x-text="`${window.location.origin}/c/${subscription.code}`"></span>
+              <div class="min-w-0 flex-1"><div class="font-semibold text-gray-900 dark:text-white" x-text="subscription.displayName || '未识别'"></div><span class="break-all text-xs text-gray-500 dark:text-gray-400" x-text="`${window.location.origin}/c/${subscription.code}`"></span><div class="mt-2 flex gap-2"><input type="text" x-model="subscription.remark" maxlength="80" placeholder="填写备注名（选填）" class="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /><button type="button" x-on:click="saveSubscriptionRemark(subscription)" class="shrink-0 text-sm text-primary-600">保存备注</button></div></div>
               <span x-cloak x-show="subscription.disabled" class="shrink-0 text-sm text-amber-600">来源已标记停用</span>
               <button type="button" x-on:click="selectManagedSubscription(subscription.code)" x-bind:disabled="managedBusy" class="shrink-0 whitespace-nowrap rounded-lg bg-primary-600 px-4 py-2 text-sm text-white disabled:opacity-50">选择编辑</button>
             </div>
@@ -434,6 +440,8 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
               placeholder={t('customShortCodePlaceholder')}
               class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 text-center"
             />
+            <label class="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-center">订阅备注名（可选）</label>
+            <input type="text" x-model="newSubscriptionRemark" maxlength="80" placeholder="例如 Alex 的手机" class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center" />
           </div>
         </div>
         <div class="flex justify-center mt-4">

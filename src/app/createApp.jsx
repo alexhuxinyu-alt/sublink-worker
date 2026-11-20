@@ -365,18 +365,54 @@ export function createApp(bindings = {}) {
             const cursor = c.req.query('cursor');
             if (cursor && cursor.length > 1024) return c.text('Invalid cursor', 400);
             const page = await runtime.kv.list({ limit: 20, ...(cursor ? { cursor } : {}) });
+            let knownNames = [];
+            try {
+                const stored = JSON.parse(await runtime.kv.get('__subscription_known_names__') || '[]');
+                if (Array.isArray(stored)) knownNames = stored.filter(n => typeof n === 'string' && /^[a-zA-Z0-9_-]{1,40}$/.test(n)).sort((a, b) => b.length - a.length);
+            } catch { /* Invalid metadata should not prevent subscription management. */ }
             const entries = await Promise.all(page.keys.map(async ({ name }) => {
                 if (!/^[a-zA-Z0-9_-]{1,128}$/.test(name) || name === 'TEST_258e5ba3d8693cf828a5e880') return null;
                 const value = await runtime.kv.get(name);
                 if (typeof value !== 'string' || !value.startsWith('?')) return null;
                 const params = new URLSearchParams(value);
-                return params.has('config') ? { code: name, disabled: params.get('config') === 'disabled' } : null;
+                if (!params.has('config')) return null;
+                let remark = '';
+                try { const stored = JSON.parse(await runtime.kv.get(`__subscription_remark__:${name}`) || '""'); if (typeof stored === 'string') remark = stored; } catch { /* Ignore invalid metadata. */ }
+                const displayName = remark || knownNames.find(n => name.length > n.length && name.toLowerCase().startsWith(n.toLowerCase())) || null;
+                return { code: name, displayName, remark, disabled: params.get('config') === 'disabled' };
             }));
             c.header('Cache-Control', 'private, no-store');
-            return c.json({ entries: entries.filter(Boolean), cursor: page.list_complete ? null : page.cursor });
+            return c.json({ entries: entries.filter(Boolean), knownNames, cursor: page.list_complete ? null : page.cursor });
         } catch (error) {
             return handleError(c, error, runtime.logger);
         }
+    });
+
+    app.post('/manage-subscription-names', async (c) => {
+        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
+        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
+        if (!(c.req.header('Content-Type') || '').toLowerCase().startsWith('application/json')) return c.text('Invalid content type', 415);
+        try {
+            const { names } = await c.req.json();
+            if (!Array.isArray(names) || names.length > 200 || names.some(n => typeof n !== 'string' || !/^[a-zA-Z0-9_-]{1,40}$/.test(n))) return c.text('Invalid names', 400);
+            const unique = [...new Map(names.map(n => [n.toLowerCase(), n])).values()];
+            await runtime.kv.put('__subscription_known_names__', JSON.stringify(unique));
+            return c.json({ saved: true });
+        } catch (error) { return handleError(c, error, runtime.logger); }
+    });
+
+    app.post('/manage-subscription-remark', async (c) => {
+        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
+        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
+        if (!(c.req.header('Content-Type') || '').toLowerCase().startsWith('application/json')) return c.text('Invalid content type', 415);
+        try {
+            const { code, remark } = await c.req.json();
+            if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code) || typeof remark !== 'string' || remark.length > 80 || /[\u0000-\u001f\u007f]/.test(remark)) return c.text('Invalid remark', 400);
+            const current = await requireShortLinkService(services.shortLinks).resolveShortCode(code);
+            if (!current || !new URLSearchParams(current).has('config')) return c.text('Subscription not found', 404);
+            await runtime.kv.put(`__subscription_remark__:${code}`, JSON.stringify(remark.trim()));
+            return c.json({ saved: true });
+        } catch (error) { return handleError(c, error, runtime.logger); }
     });
 
     // Keep the existing subscription address while changing only its sources.
