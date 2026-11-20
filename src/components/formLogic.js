@@ -47,7 +47,6 @@ export const formLogicFn = (t) => {
             async refreshSourceCatalog() {
                 if (this.sourceBusy || (managed && (this.managedBusy || this.managedRowBusy))) return;
                 this.destroy();
-                if (managed && editorCode === this.managedCode) this.managedPickedSources = '';
                 const current = request = new AbortController();
                 this.sourceBusy = true;
                 this.sourceMessage = '正在读取服务器上的客户端…';
@@ -77,17 +76,18 @@ export const formLogicFn = (t) => {
             },
 
             scheduleManagedSourcePreview() {
-                if (!editorCode || editorCode !== this.managedCode || this.managedBusy || this.managedRowBusy) return;
+                if (!editorCode || editorCode !== this.managedCode || this.managedSourceTab !== 'picker' || this.managedBusy || this.managedRowBusy) return;
                 clearTimeout(previewTimer);
                 request?.abort();
                 request = null;
                 this.sourceBusy = false;
                 this.clearSourcePreview();
-                this.managedPickedSources = '';
                 this.managedPickerBlocked = Boolean(this.sourceEmail && this.sourceServerIds.length);
                 if (this.managedPickerBlocked) {
                     this.sourceMessage = '正在读取所选来源…';
                     previewTimer = setTimeout(() => this.previewSourceLinks(), 250);
+                } else {
+                    this.managedPickedSources = '';
                 }
             },
 
@@ -109,7 +109,7 @@ export const formLogicFn = (t) => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ email: this.sourceEmail, servers })
                     }, current.signal);
-                    if (request !== current || (managed && editorCode !== this.managedCode)) return;
+                    if (request !== current || (managed && (editorCode !== this.managedCode || this.managedSourceTab !== 'picker'))) return;
                     if (result.unavailable.some(server => managed || servers.includes(server.id))) {
                         throw new Error('Source unavailable');
                     }
@@ -158,6 +158,18 @@ export const formLogicFn = (t) => {
     };
 
     window.formData = function () {
+        const sourceLineIndexes = lines => lines.flatMap((line, index) => line.trim() ? [index] : []);
+        const sourceLabel = line => {
+            try {
+                const url = new URL(line.trim());
+                if (url.protocol === 'http:' || url.protocol === 'https:') return url.host;
+                const protocol = url.protocol.slice(0, -1).toUpperCase();
+                return url.hash ? `${protocol} · ${decodeURIComponent(url.hash.slice(1))}` : `${protocol} 节点`;
+            } catch {
+                return '订阅内容';
+            }
+        };
+
         // Inline parseSurgeConfigInput to make it available in toString()
         const parseSurgeValue = (rawValue = '') => {
             const trimmed = rawValue.trim();
@@ -268,6 +280,7 @@ export const formLogicFn = (t) => {
             newSubscriptionRemark: '',
             managedLink: '',
             managedCode: '',
+            managedSourceTab: 'picker',
             managedSources: '',
             managedPickedSources: '',
             managedPickerBlocked: false,
@@ -691,6 +704,7 @@ export const formLogicFn = (t) => {
 
             resetManagedEditor() {
                 this.managedCode = '';
+                this.managedSourceTab = 'picker';
                 this.managedOriginalQuery = '';
                 this.managedSources = '';
                 this.managedPickedSources = '';
@@ -699,7 +713,6 @@ export const formLogicFn = (t) => {
                 this.managedSelectedRules = [];
                 this.managedMessage = '';
                 if (this.$refs.managedRuleOptions) this.$refs.managedRuleOptions.open = false;
-                if (this.$refs.manualManagedSources) this.$refs.manualManagedSources.open = false;
             },
 
             cancelManagedSubscriptionEdit() {
@@ -761,7 +774,42 @@ export const formLogicFn = (t) => {
                 return this.managedPickedSources || this.managedSources;
             },
 
-            useManualManagedSources() {
+            managedSourceRows() {
+                const lines = this.managedSourcesToSave().split(/\r?\n/);
+                const indexes = sourceLineIndexes(lines);
+                const counts = new Map();
+                return indexes.map((index, position) => {
+                    const line = lines[index];
+                    const count = counts.get(line) || 0;
+                    counts.set(line, count + 1);
+                    return {
+                        key: `${count}\n${line}`,
+                        label: sourceLabel(line),
+                        first: position === 0,
+                        last: position === indexes.length - 1
+                    };
+                });
+            },
+
+            moveManagedSource(position, direction) {
+                if (this.managedBusy || this.managedRowBusy || this.managedPickerBlocked) return;
+                const current = this.managedSourcesToSave();
+                const lines = current.split(/\r?\n/);
+                const indexes = sourceLineIndexes(lines);
+                const from = indexes[position], to = indexes[position + direction];
+                if (from === undefined || to === undefined) return;
+                [lines[from], lines[to]] = [lines[to], lines[from]];
+                const reordered = lines.join(current.includes('\r\n') ? '\r\n' : '\n');
+                if (this.managedPickedSources) {
+                    this.managedPickedSources = reordered;
+                } else {
+                    this.managedSources = reordered;
+                }
+                this.managedMessage = '';
+            },
+
+            useManualManagedSources(value) {
+                this.managedSources = value;
                 this.managedPickedSources = '';
                 this.managedMessage = '';
             },

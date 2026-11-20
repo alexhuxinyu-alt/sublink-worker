@@ -20,6 +20,7 @@ const SECONDARY_BUTTON = 'min-h-10 rounded-lg border border-gray-300 px-3 py-2 t
 
 const SourcePicker = ({ target }) => {
   const managed = target === 'managed';
+  const Container = managed ? 'div' : 'details';
   const selectionDisabled = managed ? 'managedBusy || managedRowBusy' : 'sourceBusy';
   const emailChanged = managed
     ? 'sourceServerIds = []; $nextTick(() => scheduleManagedSourcePreview())'
@@ -27,13 +28,13 @@ const SourcePicker = ({ target }) => {
   const serversChanged = managed ? '$nextTick(() => scheduleManagedSourcePreview())' : 'clearSourcePreview()';
 
   return (
-    <details
+    <Container
       x-data={`sourcePickerData('${target}')`}
-      x-on:toggle="toggleSourcePicker($el.open)"
+      {...(managed ? { 'x-init': 'toggleSourcePicker(true)' } : { 'x-on:toggle': 'toggleSourcePicker($el.open)' })}
       class="mb-3 rounded-xl border border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-950/60"
     >
-      <summary class="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium text-gray-800 marker:text-primary-600 dark:text-gray-200 dark:marker:text-primary-400">从 3x-ui 选来源</summary>
-      <div class="space-y-3 px-3 pb-3 text-sm text-gray-600 dark:text-gray-300">
+      {!managed && <summary class="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium text-gray-800 marker:text-primary-600 dark:text-gray-200 dark:marker:text-primary-400">从 3x-ui 选来源</summary>}
+      <div class={`space-y-3 px-3 pb-3 text-sm text-gray-600 dark:text-gray-300${managed ? ' pt-3' : ''}`}>
         <p>{managed ? '勾选服务器后自动更新下方预览，保存后生效。' : '按客户端 Email 匹配。选好服务器后，先预览再填入草稿。'}</p>
         <label x-show="sourceUsers.length" class="block">
           <span class="mb-1 block font-medium">客户端 Email</span>
@@ -78,9 +79,27 @@ const SourcePicker = ({ target }) => {
           </div>
         )}
       </div>
-    </details>
+    </Container>
   );
 };
+
+const ManagedSourceOrder = () => (
+  <div x-cloak x-show="managedSourceRows().length > 1" class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-slate-700">
+    <h3 class="text-sm font-medium text-gray-800 dark:text-gray-200">来源顺序</h3>
+    <ol id="managedSourceOrder" aria-label="来源顺序" class="mt-2 divide-y divide-gray-200 dark:divide-slate-700">
+      <template x-for="(source, position) in managedSourceRows()" x-bind:key="source.key">
+        <li class="flex items-center gap-2 py-1.5">
+          <span aria-hidden="true" x-text="position + 1" class="w-5 shrink-0 text-center text-xs tabular-nums text-gray-500 dark:text-gray-400"></span>
+          <span x-text="source.label" class="min-w-0 flex-1 break-words text-sm text-gray-800 dark:text-gray-200"></span>
+          <div class="flex shrink-0 gap-1">
+            <button type="button" x-on:click="moveManagedSource(position, -1)" x-bind:disabled="source.first || managedBusy || managedRowBusy || managedPickerBlocked" x-bind:aria-label="`将第 ${position + 1} 项上移`" class={SECONDARY_BUTTON}>上移</button>
+            <button type="button" x-on:click="moveManagedSource(position, 1)" x-bind:disabled="source.last || managedBusy || managedRowBusy || managedPickerBlocked" x-bind:aria-label="`将第 ${position + 1} 项下移`" class={SECONDARY_BUTTON}>下移</button>
+          </div>
+        </li>
+      </template>
+    </ol>
+  </div>
+);
 
 const RuleChoices = ({ t, model, onChange, disabled }) => (
   <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -213,20 +232,26 @@ export const Form = (props) => {
           </div>
           {sourceBridgeEnabled && (
             <>
-              <template x-if="managedCode">
-                <SourcePicker target="managed" />
-              </template>
-              <div x-cloak x-show="managedPickedSources" class="mb-3">
-                <label for="managedPickedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">新来源预览</label>
-                <textarea id="managedPickedSources" readonly x-bind:value="managedPickedSources" rows="4" class={`${FIELD} mt-2 block w-full font-mono`}></textarea>
+              <div role="group" aria-label="来源编辑方式" class="mb-2 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-slate-700 dark:bg-slate-950/60">
+                <button type="button" aria-controls="managedPickerPanel" x-bind:aria-pressed="(managedSourceTab === 'picker').toString()" x-bind:disabled="managedBusy || managedRowBusy" x-on:click="managedSourceTab = 'picker'" class="min-h-11 rounded-lg px-2 text-sm font-semibold text-gray-700 aria-pressed:bg-primary-100 aria-pressed:text-primary-800 dark:text-gray-300 dark:aria-pressed:bg-primary-950 dark:aria-pressed:text-primary-300">3x-ui 选择</button>
+                <button type="button" aria-controls="managedManualPanel" x-bind:aria-pressed="(managedSourceTab === 'manual').toString()" x-bind:disabled="managedBusy || managedRowBusy" x-on:click="managedSourceTab = 'manual'" class="min-h-11 rounded-lg px-2 text-sm font-semibold text-gray-700 aria-pressed:bg-primary-100 aria-pressed:text-primary-800 dark:text-gray-300 dark:aria-pressed:bg-primary-950 dark:aria-pressed:text-primary-300">手动填写</button>
+              </div>
+              <div id="managedPickerPanel" x-show="managedSourceTab === 'picker'">
+                <template x-if="managedCode && managedSourceTab === 'picker'">
+                  <SourcePicker target="managed" />
+                </template>
+                <div x-cloak x-show="managedPickedSources && !managedPickerBlocked" class="mb-3">
+                  <label for="managedPickedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">新来源预览</label>
+                  <textarea id="managedPickedSources" readonly x-bind:value="managedPickedSources" rows="4" class={`${FIELD} mt-2 block w-full font-mono`}></textarea>
+                </div>
               </div>
             </>
           )}
-          <details x-ref={sourceBridgeEnabled ? 'manualManagedSources' : undefined} open={!sourceBridgeEnabled} class="rounded-xl border border-gray-200 p-3 dark:border-slate-700">
-            <summary class="cursor-pointer text-sm font-medium text-gray-800 dark:text-gray-200">手动编辑来源</summary>
-            <label for="managedSources" class="mt-3 block text-sm text-gray-600 dark:text-gray-300">订阅来源（每行一个）</label>
-            <textarea id="managedSources" x-model="managedSources" x-on:input="useManualManagedSources()" x-bind:disabled="managedBusy || managedRowBusy || managedPickerBlocked" rows="5" class={`${FIELD} mt-2 block w-full font-mono`}></textarea>
-          </details>
+          <div id="managedManualPanel" x-show={sourceBridgeEnabled ? "managedSourceTab === 'manual'" : undefined}>
+            <label for="managedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">订阅来源（每行一个）</label>
+            <textarea id="managedSources" x-bind:value="managedSourcesToSave()" x-on:input="useManualManagedSources($event.target.value)" x-bind:disabled="managedBusy || managedRowBusy || managedPickerBlocked" rows="5" class={`${FIELD} mt-2 block w-full font-mono`}></textarea>
+          </div>
+          <ManagedSourceOrder />
           <details x-ref="managedRuleOptions" class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-slate-700">
             <summary class="cursor-pointer text-sm font-medium text-gray-800 dark:text-gray-200">修改这条订阅的分流规则</summary>
             <div class="mt-3">

@@ -110,16 +110,17 @@ with sync_playwright() as p:
     original_sources = page.locator('#managedOriginalSources')
     picked_sources = page.locator('#managedPickedSources')
     manual_sources = page.locator('#managedSources')
-    manual_summary = page.locator('summary').filter(has_text='手动编辑来源')
+    manual_tab = page.get_by_role('button', name='手动填写')
+    picker_tab = page.get_by_role('button', name='3x-ui 选择')
+    order_list = page.locator('#managedSourceOrder')
     save_managed = page.get_by_role('button', name='保存到原订阅')
     expect(original_sources).to_be_visible()
     expect(original_sources).to_have_value(first)
     expect(original_sources).not_to_be_editable()
     expect(manual_sources).to_be_hidden()
     expect(picked_sources).to_be_hidden()
-    managed_picker = page.locator('section details').filter(has=page.locator('summary').filter(has_text='从 3x-ui 选来源'))
-    managed_summary = managed_picker.locator('summary')
-    managed_summary.click()
+    expect(picker_tab).to_have_attribute('aria-pressed', 'true')
+    managed_picker = page.locator('#managedPickerPanel')
     expect(managed_picker.get_by_role('button', name='预览来源')).to_have_count(0)
     expect(managed_picker.get_by_role('button', name='替换来源草稿')).to_have_count(0)
     managed_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
@@ -133,8 +134,13 @@ with sync_playwright() as p:
     expect(original_sources).to_have_value(first)
     assert stored_parameters()['config'] == [first] and not managed_writes
 
+    manual_tab.click()
+    expect(manual_sources).to_have_value(first)
+    expect(manual_sources).to_be_editable()
+    expect(save_managed).to_be_enabled()
     fixture['partial'] = False
-    server_b.uncheck()
+    picker_tab.click()
+    managed_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
     server_b.check()
     expect(picked_sources).to_be_visible()
     expect(picked_sources).to_have_value(source_links['b'])
@@ -158,7 +164,10 @@ with sync_playwright() as p:
     expect(original_sources).to_have_value(first)
     expect(preset).to_be_hidden()
 
-    manual_summary.click()
+    manual_tab.click()
+    expect(manual_tab).to_have_attribute('aria-pressed', 'true')
+    expect(managed_picker).to_be_hidden()
+    expect(manual_sources).to_have_value(first)
     manual_sources.fill(second)
     expect(original_sources).to_have_value(first)
     saved = page.get_by_role('status').filter(has_text='已保存。固定链接')
@@ -171,13 +180,26 @@ with sync_playwright() as p:
     assert params['ua'] == ['example'] and json.loads(params['selectedRules'][0]) == old_rules
     assert [request['code'] for request in managed_writes] == [code]
 
-    managed_summary.click()
+    picker_tab.click()
     managed_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
     for server in ('测试甲', '测试乙'):
         managed_picker.get_by_role('checkbox', name=server).check()
     selected_sources = '\n'.join(source_links.values())
     expect(picked_sources).to_have_value(selected_sources)
     expect(original_sources).to_have_value(second)
+    assert stored_parameters()['config'] == [second] and len(managed_writes) == 1
+    expect(order_list.locator('li').first).to_contain_text('one.example')
+    expect(order_list.get_by_role('button', name='将第 1 项上移')).to_be_disabled()
+    expect(order_list.get_by_role('button', name='将第 2 项下移')).to_be_disabled()
+    order_list.get_by_role('button', name='将第 2 项上移').click()
+    reordered_sources = '\n'.join(reversed(source_links.values()))
+    expect(picked_sources).to_have_value(reordered_sources)
+    expect(order_list.locator('li').first).to_contain_text('two.example')
+    expect(order_list).not_to_contain_text('TEST_B')
+    manual_tab.click()
+    expect(manual_sources).to_have_value(reordered_sources)
+    picker_tab.click()
+    expect(picked_sources).to_have_value(reordered_sources)
     assert stored_parameters()['config'] == [second] and len(managed_writes) == 1
 
     rule_summary.click()
@@ -188,15 +210,21 @@ with sync_playwright() as p:
     preset.select_option('minimal')
     save_managed.click()
     expect(saved).to_be_visible()
-    expect(original_sources).to_have_value(selected_sources)
+    expect(original_sources).to_have_value(reordered_sources)
     expect(picked_sources).to_be_hidden()
     assert [request['code'] for request in managed_writes] == [code, code]
     params = stored_parameters()
     assert json.loads(params['selectedRules'][0]) == ['Location:CN', 'Private', 'Non-China']
-    assert params['ua'] == ['example'] and params['config'] == [selected_sources]
+    assert params['ua'] == ['example'] and params['config'] == [reordered_sources]
+    order_list.get_by_role('button', name='将第 1 项下移').click()
+    expect(order_list.locator('li').first).to_contain_text('one.example')
+    expect(original_sources).to_have_value(reordered_sources)
+    page.get_by_role('button', name='取消编辑').click()
+    expect(original_sources).to_be_hidden()
+    assert stored_parameters()['config'] == [reordered_sources] and len(managed_writes) == 2
     row.get_by_role('button', name='删除订阅').click()
     row.get_by_role('button', name='取消').click()
-    assert stored_parameters()['config'] == [selected_sources]
+    assert stored_parameters()['config'] == [reordered_sources]
     row.get_by_role('button', name='删除订阅').click()
     row.get_by_role('button', name='确认删除').click()
     expect(list_panel.get_by_role('status').filter(has_text='已删除订阅')).to_be_visible()
@@ -204,5 +232,5 @@ with sync_playwright() as p:
     expect(original_sources).to_be_hidden()
     for prefix in 'bcxs':
         assert page.request.get(f'{base}/{prefix}/{code}').status == 404
-    print('UI passed: automatic source preview, partial-source failure, cancel, fixed-link saves, remarks and deletion')
+    print('UI passed: source tabs, draft order and preview, partial failure, cancel, fixed-link saves, remarks and deletion')
     browser.close()
