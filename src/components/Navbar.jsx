@@ -1,8 +1,8 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource hono/jsx */
-import { APP_NAME, GITHUB_REPO, DOCS_URL } from '../constants.js';
+import { APP_NAME } from '../constants.js';
 
-const actionClass = 'inline-flex h-10 min-w-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white sm:gap-2 sm:px-3 sm:text-sm';
+const actionClass = 'inline-flex h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-lg px-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white';
 
 export const Navbar = () => {
     return (
@@ -13,27 +13,7 @@ export const Navbar = () => {
                         <img src="/favicon.ico" alt="" class="h-5 w-5 shrink-0 rounded-md sm:h-6 sm:w-6" />
                         <span>{APP_NAME}</span>
                     </a>
-                    <div class="flex shrink-0 items-center gap-0.5 sm:gap-2">
-                        <a
-                            href={DOCS_URL}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class={actionClass}
-                            aria-label="Docs"
-                        >
-                            <i class="fas fa-book text-sm" aria-hidden="true"></i>
-                            <span class="hidden min-[380px]:inline">Docs</span>
-                        </a>
-                        <a
-                            href={GITHUB_REPO}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class={actionClass}
-                            aria-label="GitHub"
-                        >
-                            <i class="fab fa-github text-sm" aria-hidden="true"></i>
-                            <span class="hidden min-[380px]:inline">GitHub</span>
-                        </a>
+                    <div class="flex shrink-0 items-center gap-1">
                         <form method="post" action="/logout">
                             <button class={actionClass} type="submit">退出</button>
                         </form>
