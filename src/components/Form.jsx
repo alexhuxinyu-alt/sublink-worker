@@ -177,7 +177,7 @@ export const Form = (props) => {
             <button type="button" x-on:click="saveManagedNames()" class={PRIMARY_BUTTON}>保存识别名</button>
           </div>
         </details>
-        <details class="mt-2 rounded-xl border border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-950/60">
+        <details {...{'x-on:toggle.self': 'if (!$el.open) closeManagedDeleteConfirmations()'}} class="mt-2 rounded-xl border border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-950/60">
           <summary class="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium text-gray-800 marker:text-primary-600 dark:text-gray-200 dark:marker:text-primary-400">
             已有订阅 <span class="ml-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs tabular-nums text-primary-800 dark:bg-primary-950 dark:text-primary-300" x-text="managedSubscriptions.length"></span>
           </summary>
@@ -187,7 +187,7 @@ export const Form = (props) => {
             </div>
             <p x-cloak x-show="managedListMessage" x-text="managedListMessage" role="status" class="text-sm text-gray-600 dark:text-gray-300"></p>
             <template x-for="subscription in managedSubscriptions" x-bind:key="subscription.code">
-              <details class="rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+              <details {...{'x-on:toggle.self': 'if (!$el.open && subscription.confirmDelete) setManagedDeleteConfirmation(subscription, false)'}} class="rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
                 <summary class="min-h-11 cursor-pointer break-all px-3 py-3 text-sm font-semibold text-gray-900 marker:text-primary-600 dark:text-white dark:marker:text-primary-400">
                   <span x-text="subscription.displayName || '未识别'"></span>
                   <span x-cloak x-show="subscription.disabled" class="ml-2 text-sm font-normal text-amber-600 dark:text-amber-400">来源已标记停用</span>
@@ -203,16 +203,22 @@ export const Form = (props) => {
                   </div>
                   <div class="flex flex-wrap gap-2">
                     <button type="button" x-on:click="selectManagedSubscription(subscription.code)" x-bind:disabled="managedBusy || managedRowBusy" class={PRIMARY_BUTTON}>选择编辑</button>
-                    <button type="button" x-on:click="subscription.confirmDelete = true" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" x-show="!subscription.confirmDelete" class="min-h-11 rounded-lg px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 disabled:opacity-50">删除订阅</button>
+                    <button type="button" x-on:click="setManagedDeleteConfirmation(subscription, true)" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" x-show="!subscription.confirmDelete" class="min-h-11 rounded-lg px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 disabled:opacity-50">删除订阅</button>
                   </div>
-                  <div x-show="subscription.confirmDelete" class="rounded-lg border border-red-200 px-3 py-2 dark:border-red-900">
-                    <p class="text-sm text-red-800 dark:text-red-300">删除后，此短码的所有格式订阅链接都会失效，客户端将无法再更新。</p>
-                    <div class="mt-2 flex flex-wrap items-center gap-3">
-                      <button type="button" x-on:click="deleteManagedSubscription(subscription)" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" class="rounded-lg bg-red-700 px-3 py-1.5 text-sm text-white disabled:opacity-50">确认删除</button>
-                      <button type="button" x-on:click="subscription.confirmDelete = false; subscription.deleteStatus = ''" x-bind:disabled="managedRowBusy" class="text-sm text-gray-700 dark:text-gray-200 disabled:opacity-50">取消</button>
+                  <template x-if="subscription.confirmDelete">
+                    <div class="rounded-lg border border-red-200 px-3 py-2 dark:border-red-900">
+                      <p class="text-sm text-red-800 dark:text-red-300">删除后，此短码的所有格式订阅链接都会失效，客户端将无法再更新。</p>
+                      <label class="mt-2 block text-sm text-gray-700 dark:text-gray-200">
+                        输入「<strong>删除订阅</strong>」以确认
+                        <input type="text" aria-label="输入删除订阅以确认" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" x-model="subscription.deleteConfirmation" x-init="$nextTick(() => $el.focus())" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" class={`${FIELD} mt-1 block w-full`} />
+                      </label>
+                      <div class="mt-2 flex flex-wrap items-center gap-3">
+                        <button type="button" disabled x-on:click="deleteManagedSubscription(subscription)" x-bind:disabled="!canDeleteManagedSubscription(subscription)" class="min-h-11 rounded-lg bg-red-700 px-3 py-1.5 text-sm text-white disabled:opacity-50">确认删除</button>
+                        <button type="button" x-on:click="setManagedDeleteConfirmation(subscription, false)" x-bind:disabled="managedRowBusy" class="min-h-11 px-2 text-sm text-gray-700 dark:text-gray-200 disabled:opacity-50">取消</button>
+                      </div>
+                      <p x-show="subscription.deleteStatus" x-text="subscription.deleteStatus" role="status" class="mt-1 text-sm text-red-700 dark:text-red-400"></p>
                     </div>
-                    <p x-show="subscription.deleteStatus" x-text="subscription.deleteStatus" role="status" class="mt-1 text-sm text-red-700 dark:text-red-400"></p>
-                  </div>
+                  </template>
                 </div>
               </details>
             </template>

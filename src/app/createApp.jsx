@@ -462,8 +462,9 @@ export function createApp(bindings = {}) {
         const contentType = c.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
         if (contentType !== 'application/json') return c.text('Invalid content type', 415);
         try {
-            const code = (await c.req.json())?.code;
+            const { code, confirmation } = (await c.req.json()) ?? {};
             if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code)) return c.text('Invalid short code', 400);
+            if (confirmation !== '删除订阅') return c.text('Deletion confirmation did not match', 400);
 
             const service = requireShortLinkService(services.shortLinks);
             const current = await service.resolveShortCode(code);

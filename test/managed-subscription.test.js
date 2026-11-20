@@ -80,7 +80,7 @@ describe('managing existing subscriptions', () => {
         const response = await app.request('https://example.test/manage-subscription-delete', {
             method: 'POST',
             headers: { Cookie: cookie, Origin: 'https://example.test', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: 'ALEX_TEST' }),
+            body: JSON.stringify({ code: 'ALEX_TEST', confirmation: '删除订阅' }),
         });
 
         expect(response.status).toBe(200);
@@ -105,7 +105,7 @@ describe('managing existing subscriptions', () => {
         const remove = (code, overrides = {}) => app.request('https://example.test/manage-subscription-delete', {
             method: 'POST',
             headers: { ...headers, ...overrides },
-            body: JSON.stringify({ code }),
+            body: JSON.stringify({ code, confirmation: '删除订阅' }),
         });
 
         expect((await remove('ALEX_TEST', { Cookie: '' })).status).toBe(302);
@@ -114,6 +114,22 @@ describe('managing existing subscriptions', () => {
         expect((await remove('MISSING')).status).toBe(404);
         expect(await kv.get('ALEX_TEST')).toBe(original);
         expect(await kv.get('clash_config')).toBe('{"dns":{}}');
+    });
+
+    it('requires the exact deletion phrase before modifying subscription data', async () => {
+        const { app, kv } = await setup();
+        await kv.put('__subscription_remark__:ALEX_TEST', JSON.stringify('手机'));
+        const before = [...kv.store.entries()];
+        const cookie = `sublink_session=${await createSession('tester', secret, Date.now() + 60000)}`;
+        for (const confirmation of [undefined, null, '', '删除', '删除订阅 ', ['删除订阅']]) {
+            const response = await app.request('https://example.test/manage-subscription-delete', {
+                method: 'POST',
+                headers: { Cookie: cookie, Origin: 'https://example.test', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: 'ALEX_TEST', confirmation }),
+            });
+            expect(response.status).toBe(400);
+        }
+        expect([...kv.store.entries()]).toEqual(before);
     });
 
     it('changes only the source list, preserves the address, and keeps a backup', async () => {

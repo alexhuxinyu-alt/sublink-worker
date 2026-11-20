@@ -668,8 +668,25 @@ export const formLogicFn = (t) => {
                 }
             },
 
+            setManagedDeleteConfirmation(subscription, open) {
+                subscription.deleteConfirmation = '';
+                subscription.deleteStatus = '';
+                subscription.confirmDelete = open;
+            },
+
+            closeManagedDeleteConfirmations() {
+                for (const subscription of this.managedSubscriptions) {
+                    if (subscription.confirmDelete) this.setManagedDeleteConfirmation(subscription, false);
+                }
+            },
+
+            canDeleteManagedSubscription(subscription) {
+                return subscription.confirmDelete && subscription.deleteConfirmation === '删除订阅'
+                    && !this.managedRowBusy && !this.managedListBusy && !this.managedBusy;
+            },
+
             async deleteManagedSubscription(subscription) {
-                if (!subscription.confirmDelete || this.managedRowBusy || this.managedListBusy || this.managedBusy) return;
+                if (!this.canDeleteManagedSubscription(subscription)) return;
                 this.managedRowBusy = true;
                 subscription.deleteStatus = '';
                 const code = subscription.code;
@@ -677,7 +694,7 @@ export const formLogicFn = (t) => {
                     const response = await fetch('/manage-subscription-delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code })
+                        body: JSON.stringify({ code, confirmation: subscription.deleteConfirmation })
                     });
                     if (response.status === 404 || response.status === 409) {
                         subscription.deleteStatus = '这条订阅已变更，请刷新列表后核对。';
@@ -693,6 +710,7 @@ export const formLogicFn = (t) => {
                 } catch {
                     subscription.deleteStatus = '删除未确认，请刷新列表后核对。';
                 } finally {
+                    subscription.deleteConfirmation = '';
                     this.managedRowBusy = false;
                 }
             },
