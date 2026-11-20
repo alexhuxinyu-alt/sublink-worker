@@ -3,6 +3,7 @@ name = "sublink-worker"
 main = "src/worker.jsx"
 compatibility_date = "2024-07-24"
 compatibility_flags = ["nodejs_compat"]
+keep_vars = true
 
 kv_namespaces = [
   { binding = "SUBLINK_KV", id = "40be652c162546aaadac4553aad22ef3" }

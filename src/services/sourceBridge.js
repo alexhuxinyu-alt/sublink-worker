@@ -1,6 +1,8 @@
 const SERVER_ID = /^[a-zA-Z0-9_-]{1,80}$/;
 const MAX_SERVERS = 32;
 
+export class SourceBridgeError extends Error {}
+
 export function isSourceEmail(value) {
     return typeof value === 'string' && value.length > 0 && value.length <= 200 &&
         value === value.trim() && !/[\u0000-\u001f\u007f]/.test(value);
@@ -30,16 +32,25 @@ export function createSourceBridge(config) {
 
     const base = new URL('/api/integrations/sublink/', origin);
     async function request(path, body) {
-        const response = await fetch(new URL(path, base), {
-            method: body ? 'POST' : 'GET',
-            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(body && { 'Content-Type': 'application/json' }) },
-            ...(body && { body: JSON.stringify(body) }),
-            redirect: 'error',
-            signal: AbortSignal.timeout(12000)
-        });
-        if (!response.ok || !/^application\/json\b/i.test(response.headers.get('Content-Type') ?? '')) {
-            throw new Error('Invalid source bridge response');
+        let response;
+        try {
+            response = await fetch(new URL(path, base), {
+                method: body ? 'POST' : 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json',
+                    'User-Agent': 'Sublink-Source-Bridge/1.0',
+                    ...(body && { 'Content-Type': 'application/json' })
+                },
+                ...(body && { body: JSON.stringify(body) }),
+                redirect: 'error',
+                signal: AbortSignal.timeout(12000)
+            });
+        } catch (error) {
+            throw new SourceBridgeError(error?.name === 'TimeoutError' ? 'Upstream request timed out' : 'Could not reach upstream');
         }
+        if (!response.ok) throw new SourceBridgeError(`Upstream HTTP ${response.status}`);
+        if (!/^application\/json\b/i.test(response.headers.get('Content-Type') ?? '')) throw new SourceBridgeError('Upstream did not return JSON');
         return response.json();
     }
 

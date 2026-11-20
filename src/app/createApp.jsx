@@ -15,7 +15,7 @@ import { encodeBase64, tryDecodeSubscriptionLines } from '../utils.js';
 import { APP_NAME, APP_SUBTITLE } from '../constants.js';
 import { ShortLinkService } from '../services/shortLinkService.js';
 import { ConfigStorageService } from '../services/configStorageService.js';
-import { createSourceBridge, isSourceLookup } from '../services/sourceBridge.js';
+import { createSourceBridge, isSourceLookup, SourceBridgeError } from '../services/sourceBridge.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { createSession, credentialsMatch, verifySession } from '../services/authService.js';
@@ -381,8 +381,8 @@ export function createApp(bindings = {}) {
         if (!isAuthConfigured(runtime.config) || !sourceBridge) return c.text('Source sync is not configured', 503);
         try {
             return c.json(await sourceBridge.catalog());
-        } catch {
-            return c.text('Source catalog is temporarily unavailable', 502);
+        } catch (error) {
+            return c.text(error instanceof SourceBridgeError ? error.message : 'Source catalog is temporarily unavailable', 502);
         }
     });
 
@@ -395,8 +395,8 @@ export function createApp(bindings = {}) {
         if (!isSourceLookup(lookup)) return c.text('Invalid source lookup', 400);
         try {
             return c.json(await sourceBridge.sources(lookup));
-        } catch {
-            return c.text('Subscription sources are temporarily unavailable', 502);
+        } catch (error) {
+            return c.text(error instanceof SourceBridgeError ? error.message : 'Subscription sources are temporarily unavailable', 502);
         }
     });
 

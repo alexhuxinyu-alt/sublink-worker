@@ -33,7 +33,10 @@ describe('discovering private subscription sources', () => {
         expect(response.headers.get('Cache-Control')).toContain('no-store');
         expect(await response.json()).toEqual({ users: [{ email: 'GCL', servers: [{ id: 'test-1', name: 'Server 1' }] }], unavailable: [] });
         expect(fetchBridge.mock.calls[0][0].href).toBe(origin + '/api/integrations/sublink/catalog');
-        expect(fetchBridge.mock.calls[0][1]).toMatchObject({ redirect: 'error', headers: { Authorization: `Bearer ${token}` } });
+        expect(fetchBridge.mock.calls[0][1]).toMatchObject({
+            redirect: 'error',
+            headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'Sublink-Source-Bridge/1.0' }
+        });
     });
 
     it('requires same-origin lookup and returns only HTTPS sources for the requested servers', async () => {
