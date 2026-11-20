@@ -49,6 +49,13 @@ with sync_playwright() as p:
 
     page.route('**/manage-source-catalog', lambda route: route.fulfill(json=catalog))
     page.route('**/manage-source-links', fulfill_sources)
+    managed_writes = []
+
+    def record_managed_write(request):
+        if request.method == 'POST' and urlsplit(request.url).path == '/manage-subscription':
+            managed_writes.append(request.post_data_json)
+
+    page.on('request', record_managed_write)
     new_picker = page.locator('form details').filter(has_text='从 3x-ui 选来源')
     new_picker.locator('summary').click()
     new_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
@@ -75,6 +82,12 @@ with sync_playwright() as p:
     inner = base + '/clash?' + urlencode({'config': first, 'ua': 'example', 'selectedRules': json.dumps(old_rules)})
     response = page.request.get(base + '/shorten-v2?url=' + quote(inner, safe='') + '&shortCode=' + code)
     assert response.ok
+
+    def stored_parameters():
+        response = page.request.get(base + '/resolve?url=' + quote(link, safe=''))
+        assert response.ok
+        return parse_qs(urlsplit(response.json()['originalUrl']).query)
+
     link_label = page.get_by_text(link, exact=True)
     list_summary = page.locator('summary').filter(has_text='已有订阅')
     list_panel = list_summary.locator('..')
@@ -92,68 +105,102 @@ with sync_playwright() as p:
     expect(row.get_by_role('status').filter(has_text='备注已保存')).to_be_visible()
     expect(row.locator('summary')).to_contain_text('测试备注')
     row.get_by_role('button', name='选择编辑').click()
-    page.locator('#managedSources').wait_for(state='visible')
-    assert page.locator('#managedSources').input_value() == first
+    original_sources = page.locator('#managedOriginalSources')
+    picked_sources = page.locator('#managedPickedSources')
+    manual_sources = page.locator('#managedSources')
+    manual_summary = page.locator('summary').filter(has_text='手动编辑来源')
+    save_managed = page.get_by_role('button', name='保存到原订阅')
+    expect(original_sources).to_be_visible()
+    expect(original_sources).to_have_value(first)
+    expect(original_sources).not_to_be_editable()
+    expect(manual_sources).to_be_hidden()
+    expect(picked_sources).to_be_hidden()
     managed_picker = page.locator('section details').filter(has=page.locator('summary').filter(has_text='从 3x-ui 选来源'))
-    managed_picker.locator('summary').click()
+    managed_summary = managed_picker.locator('summary')
+    managed_summary.click()
+    expect(managed_picker.get_by_role('button', name='预览来源')).to_have_count(0)
+    expect(managed_picker.get_by_role('button', name='替换来源草稿')).to_have_count(0)
     managed_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
-    managed_picker.get_by_role('checkbox', name='测试乙').check()
+    server_b = managed_picker.get_by_role('checkbox', name='测试乙')
     fixture['partial'] = True
-    managed_picker.get_by_role('button', name='预览来源').click()
+    server_b.check()
     expect(managed_picker.get_by_role('status')).to_contain_text('当前草稿已保留')
-    expect(managed_picker.get_by_role('button', name='替换来源草稿')).to_be_hidden()
-    expect(page.locator('#managedSources')).to_have_value(first)
-    fixture['partial'] = False
-    managed_picker.get_by_role('button', name='预览来源').click()
-    managed_picker.get_by_role('button', name='替换来源草稿').click()
-    expect(page.locator('#managedSources')).to_have_value(source_links['b'])
-    resolve = page.request.get(base + '/resolve?url=' + quote(link, safe='')).json()
-    assert parse_qs(urlsplit(resolve['originalUrl']).query)['config'] == [first]
+    assert source_requests[-1] == {'email': 'TEST-EMAIL', 'servers': ['b']}
+    expect(save_managed).to_be_disabled()
+    expect(picked_sources).to_be_hidden()
+    expect(original_sources).to_have_value(first)
+    assert stored_parameters()['config'] == [first] and not managed_writes
 
-    page.locator('#managedSources').fill(second)
-    page.locator('summary').filter(has_text='修改这条订阅的分流规则').click()
+    fixture['partial'] = False
+    server_b.uncheck()
+    server_b.check()
+    expect(picked_sources).to_be_visible()
+    expect(picked_sources).to_have_value(source_links['b'])
+    expect(picked_sources).not_to_be_editable()
+    expect(save_managed).to_be_enabled()
+    expect(original_sources).to_have_value(first)
+    assert stored_parameters()['config'] == [first] and not managed_writes
+
+    rule_summary = page.locator('summary').filter(has_text='修改这条订阅的分流规则')
+    rule_summary.click()
     preset = page.get_by_label('已有订阅的分流规则')
     preset.select_option('minimal')
     page.get_by_role('button', name='取消编辑').click()
     expect(page.get_by_role('status').filter(has_text='已取消编辑')).to_be_visible()
-    expect(page.locator('#managedSources')).to_be_hidden()
-    resolve = page.request.get(base + '/resolve?url=' + quote(link, safe='')).json()
-    params = parse_qs(urlsplit(resolve['originalUrl']).query)
+    expect(original_sources).to_be_hidden()
+    expect(picked_sources).to_be_hidden()
+    assert not managed_writes
+    params = stored_parameters()
     assert params['config'] == [first] and json.loads(params['selectedRules'][0]) == old_rules
     page.get_by_role('button', name='载入订阅').click()
-    expect(page.locator('#managedSources')).to_have_value(first)
+    expect(original_sources).to_have_value(first)
     expect(preset).to_be_hidden()
 
-    page.locator('#managedSources').fill(second)
-    page.get_by_role('button', name='保存到原订阅').click()
-    page.get_by_role('status').filter(has_text='已保存。固定链接').wait_for()
+    manual_summary.click()
+    manual_sources.fill(second)
+    expect(original_sources).to_have_value(first)
+    saved = page.get_by_role('status').filter(has_text='已保存。固定链接')
+    save_managed.click()
+    expect(saved).to_be_visible()
+    expect(original_sources).to_have_value(second)
     r = page.request.get(link)
     assert r.ok and 'TEST_B' in r.text() and 'TEST_A' not in r.text()
-    resolve = page.request.get(base + '/resolve?url=' + quote(link, safe='')).json()
-    params = parse_qs(urlsplit(resolve['originalUrl']).query)
+    params = stored_parameters()
     assert params['ua'] == ['example'] and json.loads(params['selectedRules'][0]) == old_rules
-    page.locator('summary').filter(has_text='修改这条订阅的分流规则').click()
+    assert [request['code'] for request in managed_writes] == [code]
+
+    managed_summary.click()
+    managed_picker.get_by_role('combobox', name='客户端 Email').select_option('TEST-EMAIL')
+    for server in ('测试甲', '测试乙'):
+        managed_picker.get_by_role('checkbox', name=server).check()
+    selected_sources = '\n'.join(source_links.values())
+    expect(picked_sources).to_have_value(selected_sources)
+    expect(original_sources).to_have_value(second)
+    assert stored_parameters()['config'] == [second] and len(managed_writes) == 1
+
+    rule_summary.click()
     expect(preset).to_have_value('keep')
     preset.select_option('custom')
     rule_choices = page.locator('[x-model="managedSelectedRules"]')
     expect(rule_choices.and_(page.locator('[value="Github"]'))).to_be_checked()
     preset.select_option('minimal')
-    page.get_by_role('button', name='保存到原订阅').click()
-    page.get_by_role('status').filter(has_text='已保存。固定链接').wait_for()
-    assert page.request.get(link).ok
-    resolve = page.request.get(base + '/resolve?url=' + quote(link, safe='')).json()
-    params = parse_qs(urlsplit(resolve['originalUrl']).query)
+    save_managed.click()
+    expect(saved).to_be_visible()
+    expect(original_sources).to_have_value(selected_sources)
+    expect(picked_sources).to_be_hidden()
+    assert [request['code'] for request in managed_writes] == [code, code]
+    params = stored_parameters()
     assert json.loads(params['selectedRules'][0]) == ['Location:CN', 'Private', 'Non-China']
-    assert params['ua'] == ['example'] and params['config'] == [second]
+    assert params['ua'] == ['example'] and params['config'] == [selected_sources]
     row.get_by_role('button', name='删除订阅').click()
     row.get_by_role('button', name='取消').click()
-    assert page.request.get(link).ok
+    assert stored_parameters()['config'] == [selected_sources]
     row.get_by_role('button', name='删除订阅').click()
     row.get_by_role('button', name='确认删除').click()
     expect(list_panel.get_by_role('status').filter(has_text='已删除订阅')).to_be_visible()
     expect(row).to_have_count(0)
-    expect(page.locator('#managedSources')).to_be_hidden()
+    expect(original_sources).to_be_hidden()
     for prefix in 'bcxs':
         assert page.request.get(f'{base}/{prefix}/{code}').status == 404
-    print('UI passed: source preview and draft apply, partial-source failure, cancel, remarks, saving and deletion')
+    print('UI passed: automatic source preview, partial-source failure, cancel, fixed-link saves, remarks and deletion')
     browser.close()

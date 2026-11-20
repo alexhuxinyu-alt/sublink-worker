@@ -1,7 +1,10 @@
 export const formLogicFn = (t) => {
     window.sourcePickerData = function (target) {
         let request = null;
+        let previewTimer;
         let editorCode = '';
+        const managed = target === 'managed';
+        const previewDraft = sources => [...new Set(sources.flatMap(source => source.urls))].join('\n');
         const readSourceData = async (path, options, signal) => {
             const response = await fetch(path, { ...options, signal, cache: 'no-store', redirect: 'error' });
             if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) {
@@ -29,8 +32,10 @@ export const formLogicFn = (t) => {
             },
 
             destroy() {
+                clearTimeout(previewTimer);
                 request?.abort();
                 request = null;
+                if (managed && editorCode && editorCode === this.managedCode) this.managedPickerBlocked = false;
                 this.sourceBusy = false;
                 this.sourceUsers = [];
                 this.sourceUnavailable = [];
@@ -40,8 +45,9 @@ export const formLogicFn = (t) => {
             },
 
             async refreshSourceCatalog() {
-                if (this.sourceBusy) return;
+                if (this.sourceBusy || (managed && (this.managedBusy || this.managedRowBusy))) return;
                 this.destroy();
+                if (managed && editorCode === this.managedCode) this.managedPickedSources = '';
                 const current = request = new AbortController();
                 this.sourceBusy = true;
                 this.sourceMessage = '正在读取服务器上的客户端…';
@@ -70,9 +76,24 @@ export const formLogicFn = (t) => {
                 this.sourceMessage = '';
             },
 
+            scheduleManagedSourcePreview() {
+                if (!editorCode || editorCode !== this.managedCode || this.managedBusy || this.managedRowBusy) return;
+                clearTimeout(previewTimer);
+                request?.abort();
+                request = null;
+                this.sourceBusy = false;
+                this.clearSourcePreview();
+                this.managedPickedSources = '';
+                this.managedPickerBlocked = Boolean(this.sourceEmail && this.sourceServerIds.length);
+                if (this.managedPickerBlocked) {
+                    this.sourceMessage = '正在读取所选来源…';
+                    previewTimer = setTimeout(() => this.previewSourceLinks(), 250);
+                }
+            },
+
             async previewSourceLinks() {
                 if (this.sourceBusy || !this.sourceEmail || !this.sourceServerIds.length) return;
-                if (target === 'managed' && this.sourceUnavailable.length) {
+                if (managed && this.sourceUnavailable.length) {
                     this.sourceMessage = '有服务器尚未同步，当前草稿已保留。请刷新后再试。';
                     return;
                 }
@@ -88,8 +109,8 @@ export const formLogicFn = (t) => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ email: this.sourceEmail, servers })
                     }, current.signal);
-                    if (request !== current) return;
-                    if (result.unavailable.some(server => target === 'managed' || servers.includes(server.id))) {
+                    if (request !== current || (managed && editorCode !== this.managedCode)) return;
+                    if (result.unavailable.some(server => managed || servers.includes(server.id))) {
                         throw new Error('Source unavailable');
                     }
                     const sources = new Map(servers.map(id => [id, []]));
@@ -100,11 +121,17 @@ export const formLogicFn = (t) => {
                         if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid source URL');
                         matches.push(url.href);
                     }
-                    this.sourcePreview = servers.map(id => {
+                    const preview = servers.map(id => {
                         const urls = sources.get(id);
                         if (!urls.length || !names.has(id)) throw new Error('Selected source is missing');
                         return { id, name: names.get(id), urls };
                     });
+                    if (managed) {
+                        this.managedPickedSources = previewDraft(preview);
+                        this.managedPickerBlocked = false;
+                    } else {
+                        this.sourcePreview = preview;
+                    }
                     this.sourceMessage = '';
                 } catch {
                     if (request === current) this.sourceMessage = '所选服务器有来源不可用，当前草稿已保留。请刷新后重试。';
@@ -117,20 +144,13 @@ export const formLogicFn = (t) => {
             },
 
             applySourcePreview() {
-                if (this.sourceBusy || !this.sourcePreview.length) return;
-                const draft = [...new Set(this.sourcePreview.flatMap(source => source.urls))].join('\n');
-                if (target === 'managed') {
-                    if (!editorCode || this.managedCode !== editorCode || this.managedBusy || this.managedRowBusy) return;
-                    this.managedSources = draft;
-                    this.managedMessage = '';
-                } else {
-                    this.inputFromSourcePicker = true;
-                    clearTimeout(this.parseDebounceTimer);
-                    this.input = draft;
-                    this.generatedLinks = null;
-                    this.shortenedLinks = null;
-                    this.qrCodeUrl = null;
-                }
+                if (managed || this.sourceBusy || !this.sourcePreview.length) return;
+                this.inputFromSourcePicker = true;
+                clearTimeout(this.parseDebounceTimer);
+                this.input = previewDraft(this.sourcePreview);
+                this.generatedLinks = null;
+                this.shortenedLinks = null;
+                this.qrCodeUrl = null;
                 this.clearSourcePreview();
                 this.sourceMessage = '已填入草稿，可以继续核对。';
             }
@@ -249,6 +269,8 @@ export const formLogicFn = (t) => {
             managedLink: '',
             managedCode: '',
             managedSources: '',
+            managedPickedSources: '',
+            managedPickerBlocked: false,
             managedOriginalQuery: '',
             managedRulePreset: 'keep',
             managedSelectedRules: [],
@@ -671,10 +693,13 @@ export const formLogicFn = (t) => {
                 this.managedCode = '';
                 this.managedOriginalQuery = '';
                 this.managedSources = '';
+                this.managedPickedSources = '';
+                this.managedPickerBlocked = false;
                 this.managedRulePreset = 'keep';
                 this.managedSelectedRules = [];
                 this.managedMessage = '';
                 if (this.$refs.managedRuleOptions) this.$refs.managedRuleOptions.open = false;
+                if (this.$refs.manualManagedSources) this.$refs.manualManagedSources.open = false;
             },
 
             cancelManagedSubscriptionEdit() {
@@ -699,8 +724,8 @@ export const formLogicFn = (t) => {
                     this.managedOriginalQuery = resolved.search;
                     this.managedSources = sources;
                     this.applyManagedRulePreset();
-                    this.managedMessage = '已载入。每行一个订阅地址或节点；保存后固定链接不变。';
-                    setTimeout(() => document.getElementById('managedSources')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+                    this.managedMessage = '';
+                    setTimeout(() => document.getElementById('managedOriginalSources')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
                 } catch (error) {
                     this.managedMessage = error.message || '读取失败，请稍后重试。';
                 } finally {
@@ -728,8 +753,22 @@ export const formLogicFn = (t) => {
                 this.managedSelectedRules = rules?.length ? rules.filter(name => presets.comprehensive.includes(name)) : [...presets.minimal];
             },
 
+            managedOriginalSources() {
+                return new URLSearchParams(this.managedOriginalQuery).get('config') || '';
+            },
+
+            managedSourcesToSave() {
+                return this.managedPickedSources || this.managedSources;
+            },
+
+            useManualManagedSources() {
+                this.managedPickedSources = '';
+                this.managedMessage = '';
+            },
+
             async saveManagedSubscription() {
-                if (!this.managedCode || !this.managedSources.trim() || this.managedBusy || this.managedRowBusy) return;
+                const sources = this.managedSourcesToSave().trim();
+                if (!this.managedCode || !sources || this.managedPickerBlocked || this.managedBusy || this.managedRowBusy) return;
                 const selectedRules = this.managedRulePreset === 'keep' ? undefined : [...new Set(this.managedSelectedRules)];
                 if (selectedRules?.length === 0) {
                     this.managedMessage = '请至少选择一类规则，或选择保留原规则。';
@@ -738,7 +777,6 @@ export const formLogicFn = (t) => {
                 this.managedBusy = true;
                 this.managedMessage = '';
                 try {
-                    const sources = this.managedSources.trim();
                     const response = await fetch('/manage-subscription', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ code: this.managedCode, originalQuery: this.managedOriginalQuery, sources, selectedRules })
@@ -750,6 +788,8 @@ export const formLogicFn = (t) => {
                     params.set('config', sources);
                     if (selectedRules) params.set('selectedRules', JSON.stringify(selectedRules));
                     this.managedOriginalQuery = `?${params.toString()}`;
+                    this.managedSources = sources;
+                    this.managedPickedSources = '';
                     this.managedRulePreset = 'keep';
                     this.managedMessage = result.updated ? '已保存。固定链接不变，客户端更新订阅后生效。' : '内容没有变化，固定链接保持不变。';
                 } catch (error) {
