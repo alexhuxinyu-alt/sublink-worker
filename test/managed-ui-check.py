@@ -19,6 +19,8 @@ with sync_playwright() as p:
     page.wait_for_url(base + '/')
     page.evaluate("localStorage.setItem('advancedToggle', 'true')")
     page.reload(wait_until='domcontentloaded')
+    expect(page.locator('#input')).to_be_hidden()
+    page.locator('summary').filter(has_text='生成新订阅链接').click()
     expect(page.get_by_role('button', name='高级选项')).to_have_attribute('aria-expanded', 'false')
     page.locator('#input').fill(first)
     page.locator('form').filter(has=page.locator('#input')).locator('button[type=submit]').click()

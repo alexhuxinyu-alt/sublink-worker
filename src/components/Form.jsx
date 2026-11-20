@@ -250,10 +250,14 @@ export const Form = (props) => {
         </div>
         <p x-cloak x-show="managedMessage" x-text="managedMessage" role="status" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></p>
       </section>
-      <form {...{'x-on:submit.prevent': 'submitForm'}} class="space-y-5 sm:space-y-6">
+      <details class={CARD}>
+        <summary class="min-h-11 cursor-pointer py-2 text-base font-semibold text-gray-900 marker:text-primary-600 dark:text-white dark:marker:text-primary-400">
+          {t('createSubscriptionLink')}
+        </summary>
+      <form {...{'x-on:submit.prevent': 'submitForm'}} class="mt-4 space-y-5 sm:space-y-6">
 
       {/* Input Section */}
-      <div class={CARD}>
+      <div>
         {sourceBridgeEnabled && <SourcePicker target="new" />}
         <TextareaWithActions
           id="input"
@@ -623,6 +627,7 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
       </div>
     </div>
   </div>
+      </details>
 
   <script dangerouslySetInnerHTML={{ __html: scriptContent }} />
     </div>
