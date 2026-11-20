@@ -513,10 +513,7 @@ export const formLogicFn = (t) => {
                     this.managedListMessage = `已删除订阅「${subscription.displayName || '未识别'}」。`;
                     if (this.managedCode === code) {
                         this.managedLink = '';
-                        this.managedCode = '';
-                        this.managedOriginalQuery = '';
-                        this.managedSources = '';
-                        this.managedMessage = '';
+                        this.resetManagedEditor();
                     }
                 } catch {
                     subscription.deleteStatus = '删除未确认，请刷新列表后核对。';
@@ -530,11 +527,24 @@ export const formLogicFn = (t) => {
                 await this.loadManagedSubscription();
             },
 
-            async loadManagedSubscription() {
+            resetManagedEditor() {
                 this.managedCode = '';
                 this.managedOriginalQuery = '';
                 this.managedSources = '';
+                this.managedRulePreset = 'keep';
+                this.managedSelectedRules = [];
                 this.managedMessage = '';
+                if (this.$refs.managedRuleOptions) this.$refs.managedRuleOptions.open = false;
+            },
+
+            cancelManagedSubscriptionEdit() {
+                if (!this.managedCode || this.managedBusy || this.managedRowBusy) return;
+                this.resetManagedEditor();
+                this.managedMessage = '已取消编辑，未保存的修改已丢弃。';
+            },
+
+            async loadManagedSubscription() {
+                this.resetManagedEditor();
                 try {
                     const link = new URL(this.managedLink.trim());
                     const match = link.pathname.match(/^\/[bcxs]\/([a-zA-Z0-9_-]+)$/);
@@ -548,7 +558,6 @@ export const formLogicFn = (t) => {
                     this.managedCode = match[1];
                     this.managedOriginalQuery = resolved.search;
                     this.managedSources = sources;
-                    this.managedRulePreset = 'keep';
                     this.applyManagedRulePreset();
                     this.managedMessage = '已载入。每行一个订阅地址或节点；保存后固定链接不变。';
                     setTimeout(() => document.getElementById('managedSources')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);

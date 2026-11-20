@@ -55,6 +55,20 @@ with sync_playwright() as p:
     page.locator('#managedSources').wait_for(state='visible')
     assert page.locator('#managedSources').input_value() == first
     page.locator('#managedSources').fill(second)
+    page.locator('summary').filter(has_text='修改这条订阅的分流规则').click()
+    preset = page.get_by_label('已有订阅的分流规则')
+    preset.select_option('minimal')
+    page.get_by_role('button', name='取消编辑').click()
+    expect(page.get_by_role('status').filter(has_text='已取消编辑')).to_be_visible()
+    expect(page.locator('#managedSources')).to_be_hidden()
+    resolve = page.request.get(base + '/resolve?url=' + quote(link, safe='')).json()
+    params = parse_qs(urlsplit(resolve['originalUrl']).query)
+    assert params['config'] == [first] and json.loads(params['selectedRules'][0]) == old_rules
+    page.get_by_role('button', name='载入订阅').click()
+    expect(page.locator('#managedSources')).to_have_value(first)
+    expect(preset).to_be_hidden()
+
+    page.locator('#managedSources').fill(second)
     page.get_by_role('button', name='保存到原订阅').click()
     page.get_by_role('status').filter(has_text='已保存。固定链接').wait_for()
     r = page.request.get(link)
@@ -63,7 +77,6 @@ with sync_playwright() as p:
     params = parse_qs(urlsplit(resolve['originalUrl']).query)
     assert params['ua'] == ['example'] and json.loads(params['selectedRules'][0]) == old_rules
     page.locator('summary').filter(has_text='修改这条订阅的分流规则').click()
-    preset = page.get_by_label('已有订阅的分流规则')
     expect(preset).to_have_value('keep')
     preset.select_option('custom')
     rule_choices = page.locator('[x-model="managedSelectedRules"]')
@@ -86,5 +99,5 @@ with sync_playwright() as p:
     expect(page.locator('#managedSources')).to_be_hidden()
     for prefix in 'bcxs':
         assert page.request.get(f'{base}/{prefix}/{code}').status == 404
-    print('UI passed: remarks, source-only editing, rule editing with the same URL, and deletion')
+    print('UI passed: cancel discards sources and rules, plus remarks, saving and deletion')
     browser.close()

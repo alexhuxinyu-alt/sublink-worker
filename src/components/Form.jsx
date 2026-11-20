@@ -137,14 +137,14 @@ export const Form = (props) => {
         <div class="mt-4 border-t border-gray-200 pt-4 dark:border-slate-700">
           <label for="managedLink" class="text-sm leading-relaxed text-gray-600 dark:text-gray-400">也可以粘贴其他格式的本站固定订阅链接：</label>
           <div class="mt-2 flex flex-col gap-2 sm:flex-row">
-            <input id="managedLink" type="url" x-model="managedLink" x-bind:disabled="managedBusy || managedRowBusy" x-on:input="managedCode = ''; managedOriginalQuery = ''; managedSources = ''; managedMessage = ''" placeholder="粘贴本站已有的订阅短链接" class={`${FIELD} min-h-11 min-w-0 flex-1`} />
+            <input id="managedLink" type="url" x-model="managedLink" x-bind:disabled="managedBusy || managedRowBusy" x-on:input="resetManagedEditor()" placeholder="粘贴本站已有的订阅短链接" class={`${FIELD} min-h-11 min-w-0 flex-1`} />
             <button type="button" x-on:click="loadManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy" class={`${PRIMARY_BUTTON} shrink-0 whitespace-nowrap`}>载入订阅</button>
           </div>
         </div>
         <div x-cloak x-show="managedCode" class="mt-4">
           <label for="managedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">订阅来源（每行一个）</label>
           <textarea id="managedSources" x-model="managedSources" x-bind:disabled="managedBusy || managedRowBusy" rows="5" class={`${FIELD} mt-2 block w-full`}></textarea>
-          <details class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-slate-700">
+          <details x-ref="managedRuleOptions" class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-slate-700">
             <summary class="cursor-pointer text-sm font-medium text-gray-800 dark:text-gray-200">修改这条订阅的分流规则</summary>
             <div class="mt-3">
               <select aria-label="已有订阅的分流规则" x-model="managedRulePreset" x-on:change="applyManagedRulePreset()" x-bind:disabled="managedBusy || managedRowBusy" class={FIELD}>
@@ -160,7 +160,10 @@ export const Form = (props) => {
               </div>
             </div>
           </details>
-          <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy || !managedSources.trim()" class={`${PRIMARY_BUTTON} mt-3`}>保存到原订阅</button>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy || !managedSources.trim()" class={PRIMARY_BUTTON}>保存到原订阅</button>
+            <button type="button" x-on:click="cancelManagedSubscriptionEdit()" x-bind:disabled="managedBusy || managedRowBusy" class="min-h-11 rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50 dark:border-slate-600 dark:text-gray-200 dark:hover:bg-slate-800">取消编辑</button>
+          </div>
         </div>
         <p x-cloak x-show="managedMessage" x-text="managedMessage" role="status" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></p>
       </section>
