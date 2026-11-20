@@ -358,6 +358,39 @@ export function createApp(bindings = {}) {
         }
     });
 
+    // Keep the existing subscription address while changing only its sources.
+    app.post('/manage-subscription', async (c) => {
+        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
+        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
+        if (!(c.req.header('Content-Type') || '').toLowerCase().startsWith('application/json')) return c.text('Invalid content type', 415);
+        try {
+            const { code, originalQuery, sources } = await c.req.json();
+            if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code) ||
+                typeof originalQuery !== 'string' || !originalQuery.startsWith('?') || originalQuery.length > 64000 ||
+                typeof sources !== 'string' || !sources.trim() || sources.length > 48000) {
+                return c.text('Invalid subscription data', 400);
+            }
+            const service = requireShortLinkService(services.shortLinks);
+            const current = await service.resolveShortCode(code);
+            if (!current) return c.text('Subscription not found', 404);
+            if (current !== originalQuery) return c.text('Subscription changed; reload before saving', 409);
+            const params = new URLSearchParams(current);
+            if (!params.has('config')) return c.text('Subscription has no editable sources', 400);
+            params.set('config', sources.trim());
+            const updatedQuery = `?${params.toString()}`;
+            if (updatedQuery === current) return c.json({ updated: false });
+            // A separate backup makes accidental source changes recoverable.
+            const backupKey = `__subscription_backup__:${code}:${Date.now()}:${crypto.randomUUID()}`;
+            await runtime.kv.put(backupKey, current);
+            if (await service.resolveShortCode(code) !== current) return c.text('Subscription changed; reload before saving', 409);
+            await service.createShortLink(updatedQuery, code);
+            return c.json({ updated: true });
+        } catch (error) {
+            if (error instanceof SyntaxError) return c.text('Invalid JSON', 400);
+            return handleError(c, error, runtime.logger);
+        }
+    });
+
     const redirectHandler = (prefix) => async (c) => {
         try {
             const code = c.req.param('code');

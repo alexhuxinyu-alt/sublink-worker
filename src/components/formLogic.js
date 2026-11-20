@@ -106,6 +106,12 @@ export const formLogicFn = (t) => {
             qrCodeLabel: '',
             shortening: false,
             customShortCode: '',
+            managedLink: '',
+            managedCode: '',
+            managedSources: '',
+            managedOriginalQuery: '',
+            managedBusy: false,
+            managedMessage: '',
             parsingUrl: false,
             parseDebounceTimer: null,
             // These will be populated from window.APP_TRANSLATIONS
@@ -417,6 +423,55 @@ export const formLogicFn = (t) => {
                     alert(window.APP_TRANSLATIONS.errorGeneratingLinks);
                 } finally {
                     this.loading = false;
+                }
+            },
+
+            async loadManagedSubscription() {
+                this.managedCode = '';
+                this.managedOriginalQuery = '';
+                this.managedSources = '';
+                this.managedMessage = '';
+                try {
+                    const link = new URL(this.managedLink.trim());
+                    const match = link.pathname.match(/^\/[bcxs]\/([a-zA-Z0-9_-]+)$/);
+                    if (link.origin !== window.location.origin || !match || link.search || link.hash) throw new Error('请输入本站的完整固定订阅链接。');
+                    this.managedBusy = true;
+                    const response = await fetch(`/resolve?url=${encodeURIComponent(link.href)}`, { cache: 'no-store' });
+                    if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) throw new Error('读取失败，请确认链接正确并已登录。');
+                    const resolved = new URL((await response.json()).originalUrl);
+                    const sources = resolved.searchParams.get('config');
+                    if (resolved.origin !== window.location.origin || !sources) throw new Error('该链接没有可编辑的来源，请检查原配置。');
+                    this.managedCode = match[1];
+                    this.managedOriginalQuery = resolved.search;
+                    this.managedSources = sources;
+                    this.managedMessage = '已载入。每行一个订阅地址或节点；保存后固定链接不变。';
+                } catch (error) {
+                    this.managedMessage = error.message || '读取失败，请稍后重试。';
+                } finally {
+                    this.managedBusy = false;
+                }
+            },
+
+            async saveManagedSubscription() {
+                if (!this.managedCode || !this.managedSources.trim() || this.managedBusy) return;
+                this.managedBusy = true;
+                this.managedMessage = '';
+                try {
+                    const response = await fetch('/manage-subscription', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: this.managedCode, originalQuery: this.managedOriginalQuery, sources: this.managedSources })
+                    });
+                    if (response.status === 409) throw new Error('订阅已被其他操作修改，请重新载入后再保存。');
+                    if (!response.ok) throw new Error('保存失败，原链接未确认更新，请重新载入检查。');
+                    const result = await response.json();
+                    const params = new URLSearchParams(this.managedOriginalQuery);
+                    params.set('config', this.managedSources.trim());
+                    this.managedOriginalQuery = `?${params.toString()}`;
+                    this.managedMessage = result.updated ? '已保存。固定链接不变，客户端更新订阅后生效。' : '内容没有变化，固定链接保持不变。';
+                } catch (error) {
+                    this.managedMessage = error.message || '保存失败，请重新载入检查。';
+                } finally {
+                    this.managedBusy = false;
                 }
             },
 

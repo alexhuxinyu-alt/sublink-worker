@@ -47,6 +47,20 @@ export const Form = (props) => {
 
   return (
     <div x-data="formData()" x-init="init()" class="max-w-4xl mx-auto">
+      <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">编辑已有订阅</h2>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">粘贴某位用户的固定订阅链接，载入后增删来源；保存后链接地址保持不变。</p>
+        <div class="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input type="url" x-model="managedLink" x-on:input="managedCode = ''; managedOriginalQuery = ''; managedSources = ''; managedMessage = ''" placeholder="粘贴本站已有的订阅短链接" class="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+          <button type="button" x-on:click="loadManagedSubscription()" x-bind:disabled="managedBusy" class="rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">载入订阅</button>
+        </div>
+        <div x-cloak x-show="managedCode" class="mt-4">
+          <label for="managedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">订阅来源（每行一个）</label>
+          <textarea id="managedSources" x-model="managedSources" rows="5" class="mt-2 w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"></textarea>
+          <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || !managedSources.trim()" class="mt-3 rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">保存到原订阅</button>
+        </div>
+        <p x-cloak x-show="managedMessage" x-text="managedMessage" role="status" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></p>
+      </section>
       <form {...{'x-on:submit.prevent': 'submitForm'}} class="space-y-8">
 
       {/* Input Section */}
