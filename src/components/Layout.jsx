@@ -2,10 +2,10 @@ import { html } from 'hono/html'
 import { APP_KEYWORDS } from '../constants.js';
 
 export const Layout = (props) => {
-  const { title, children } = props
+  const { title, children, lang = 'zh-CN' } = props
   return html`
     <!DOCTYPE html>
-    <html lang="en" x-data="appData()">
+    <html lang="${lang}" x-data="appData()">
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,7 +13,7 @@ export const Layout = (props) => {
         <meta name="description" content="Convert and optimize your subscription links easily" />
         <meta name="keywords" content="${APP_KEYWORDS}" />
         <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
         <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
@@ -58,7 +58,7 @@ export const Layout = (props) => {
                   }
                 },
                 fontFamily: {
-                  sans: ['Inter', 'sans-serif'],
+                  sans: ['Inter', 'system-ui', '-apple-system', '"PingFang SC"', '"Microsoft YaHei"', '"Noto Sans CJK SC"', 'sans-serif'],
                 }
               }
             }
@@ -66,48 +66,21 @@ export const Layout = (props) => {
         </script>
         <style>
           body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             position: relative;
             min-height: 100vh;
           }
 
-          /* Subtle radial gradient background */
           body::before {
             content: '';
             position: fixed;
             inset: 0;
-            z-index: -2;
-            background:
-              radial-gradient(ellipse 80% 50% at 50% -20%, rgba(10, 163, 235, 0.08) 0%, transparent 60%),
-              radial-gradient(ellipse 60% 40% at 90% 80%, rgba(51, 197, 255, 0.05) 0%, transparent 50%),
-              radial-gradient(ellipse 50% 30% at 10% 90%, rgba(0, 130, 202, 0.04) 0%, transparent 50%);
-            pointer-events: none;
-          }
-
-          .dark body::before,
-          html.dark body::before {
-            background:
-              radial-gradient(ellipse 80% 50% at 50% -20%, rgba(10, 163, 235, 0.12) 0%, transparent 60%),
-              radial-gradient(ellipse 60% 40% at 90% 80%, rgba(51, 197, 255, 0.06) 0%, transparent 50%),
-              radial-gradient(ellipse 50% 30% at 10% 90%, rgba(0, 130, 202, 0.05) 0%, transparent 50%);
-          }
-
-          /* Subtle noise texture overlay */
-          body::after {
-            content: '';
-            position: fixed;
-            inset: 0;
             z-index: -1;
-            opacity: 0.3;
+            background: radial-gradient(ellipse 75% 28rem at 50% 0, #e3f3fc, transparent);
             pointer-events: none;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-            background-repeat: repeat;
-            background-size: 128px 128px;
           }
 
-          .dark body::after,
-          html.dark body::after {
-            opacity: 0.15;
+          .dark body::before {
+            background: radial-gradient(ellipse 80% 32rem at 50% 0, #14263b, transparent);
           }
 
           [x-cloak] { display: none !important; }
@@ -252,7 +225,7 @@ export const Layout = (props) => {
           }
         </script>
       </head>
-      <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+      <body class="bg-gray-50 font-sans text-gray-900 transition-colors duration-300 dark:bg-gray-950 dark:text-gray-100">
         ${children}
       </body>
     </html>

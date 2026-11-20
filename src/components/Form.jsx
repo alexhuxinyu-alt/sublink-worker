@@ -13,6 +13,10 @@ const LINK_FIELDS = [
   { key: 'surge', labelKey: 'surgeLink' }
 ];
 
+const CARD = 'rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-slate-700/80 dark:bg-slate-900/80';
+const FIELD = 'rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-base text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-950/70 dark:text-white';
+const PRIMARY_BUTTON = 'inline-flex min-h-11 items-center justify-center rounded-xl bg-primary-700 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50';
+
 export const Form = (props) => {
   const { t, lang } = props;
 
@@ -47,18 +51,25 @@ export const Form = (props) => {
 
   return (
     <div x-data="formData()" x-init="init()" class="max-w-4xl mx-auto">
-      <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">编辑已有订阅</h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">优先显示你填写的备注，否则按短码前缀识别；编辑来源后链接保持不变。</p>
-        <details class="mt-3 text-sm text-gray-600 dark:text-gray-300">
-          <summary class="cursor-pointer">管理用户识别名</summary>
-          <p class="mt-2">用逗号或空格分隔用户名。新用户可在此添加；系统按最长前缀匹配。</p>
-          <textarea x-model="managedKnownNames" rows="2" placeholder="例如 Alex, CSM, HYB" class="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"></textarea>
-          <button type="button" x-on:click="saveManagedNames()" class="mt-2 rounded-lg bg-primary-600 px-4 py-2 text-white">保存识别名</button>
+      <section class={`${CARD} mb-5 sm:mb-6`}>
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-sm text-primary-700 dark:bg-primary-950 dark:text-primary-300" aria-hidden="true">
+            <i class="fas fa-link"></i>
+          </span>
+          编辑已有订阅
+        </h2>
+        <p class="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">优先显示你填写的备注，否则按短码前缀识别；编辑来源后链接保持不变。</p>
+        <details class="mt-4 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-gray-300">
+          <summary class="min-h-11 cursor-pointer px-3 py-3 font-medium text-gray-800 marker:text-primary-600 dark:text-gray-200 dark:marker:text-primary-400">管理用户识别名</summary>
+          <div class="space-y-2 px-3 pb-3">
+            <p>用逗号或空格分隔用户名。新用户可在此添加；系统按最长前缀匹配。</p>
+            <textarea x-model="managedKnownNames" rows="2" placeholder="例如 Alex, CSM, HYB" class={`${FIELD} block w-full`}></textarea>
+            <button type="button" x-on:click="saveManagedNames()" class={PRIMARY_BUTTON}>保存识别名</button>
+          </div>
         </details>
-        <details class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700">
-          <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-            已有订阅 <span x-text="`（${managedSubscriptions.length}）`"></span>
+        <details class="mt-2 rounded-xl border border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-950/60">
+          <summary class="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium text-gray-800 marker:text-primary-600 dark:text-gray-200 dark:marker:text-primary-400">
+            已有订阅 <span class="ml-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs tabular-nums text-primary-800 dark:bg-primary-950 dark:text-primary-300" x-text="managedSubscriptions.length"></span>
           </summary>
           <div class="space-y-2 px-3 pb-3">
             <div class="flex justify-end">
@@ -66,23 +77,23 @@ export const Form = (props) => {
             </div>
             <p x-cloak x-show="managedListMessage" x-text="managedListMessage" role="status" class="text-sm text-gray-600 dark:text-gray-300"></p>
             <template x-for="subscription in managedSubscriptions" x-bind:key="subscription.code">
-              <details class="rounded-lg bg-gray-50 dark:bg-gray-900">
-                <summary class="cursor-pointer break-all px-3 py-2 font-semibold text-gray-900 dark:text-white">
+              <details class="rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                <summary class="min-h-11 cursor-pointer break-all px-3 py-3 text-sm font-semibold text-gray-900 marker:text-primary-600 dark:text-white dark:marker:text-primary-400">
                   <span x-text="subscription.displayName || '未识别'"></span>
                   <span x-cloak x-show="subscription.disabled" class="ml-2 text-sm font-normal text-amber-600 dark:text-amber-400">来源已标记停用</span>
                 </summary>
                 <div class="space-y-3 px-3 pb-3">
-                  <p class="break-all text-xs text-gray-500 dark:text-gray-400" x-text="`${window.location.origin}/c/${subscription.code}`"></p>
+                  <p class="break-all rounded-lg bg-gray-50 px-2.5 py-2 font-mono text-xs text-gray-600 dark:bg-slate-950 dark:text-gray-400" x-text="`${window.location.origin}/c/${subscription.code}`"></p>
                   <div>
                     <div class="flex flex-wrap items-center gap-2">
-                      <input type="text" x-model="subscription.remark" x-on:input="subscription.remarkStatus = ''" x-bind:disabled="managedRowBusy" maxlength="80" aria-label="订阅备注名" placeholder="填写备注名（选填）" class="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-                      <button type="button" x-on:click="saveSubscriptionRemark(subscription)" x-bind:disabled="managedRowBusy || managedListBusy" class="shrink-0 text-sm text-primary-600 dark:text-primary-400 disabled:opacity-50">保存备注</button>
+                      <input type="text" x-model="subscription.remark" x-on:input="subscription.remarkStatus = ''" x-bind:disabled="managedRowBusy" maxlength="80" aria-label="订阅备注名" placeholder="填写备注名（选填）" class={`${FIELD} min-h-11 min-w-0 flex-1`} />
+                      <button type="button" x-on:click="saveSubscriptionRemark(subscription)" x-bind:disabled="managedRowBusy || managedListBusy" class="min-h-11 shrink-0 rounded-lg bg-primary-50 px-2.5 text-sm font-medium text-primary-800 hover:bg-primary-100 dark:bg-primary-950 dark:text-primary-300 dark:hover:bg-primary-900 disabled:opacity-50">保存备注</button>
                     </div>
                     <p x-show="subscription.remarkStatus" x-text="subscription.remarkStatus" role="status" x-bind:class="subscription.remarkError ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'" class="mt-1 text-sm"></p>
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <button type="button" x-on:click="selectManagedSubscription(subscription.code)" x-bind:disabled="managedBusy || managedRowBusy" class="rounded-lg bg-primary-600 px-4 py-2 text-sm text-white disabled:opacity-50">选择编辑</button>
-                    <button type="button" x-on:click="subscription.confirmDelete = true" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" x-show="!subscription.confirmDelete" class="rounded-lg px-3 py-2 text-sm text-red-700 dark:text-red-400 disabled:opacity-50">删除订阅</button>
+                    <button type="button" x-on:click="selectManagedSubscription(subscription.code)" x-bind:disabled="managedBusy || managedRowBusy" class={PRIMARY_BUTTON}>选择编辑</button>
+                    <button type="button" x-on:click="subscription.confirmDelete = true" x-bind:disabled="managedBusy || managedRowBusy || managedListBusy" x-show="!subscription.confirmDelete" class="min-h-11 rounded-lg px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 disabled:opacity-50">删除订阅</button>
                   </div>
                   <div x-show="subscription.confirmDelete" class="rounded-lg border border-red-200 px-3 py-2 dark:border-red-900">
                     <p class="text-sm text-red-800 dark:text-red-300">删除后，此短码的所有格式订阅链接都会失效，客户端将无法再更新。</p>
@@ -97,28 +108,30 @@ export const Form = (props) => {
             </template>
           </div>
         </details>
-        <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">也可以粘贴其他格式的本站固定订阅链接：</p>
-        <div class="mt-4 flex flex-col gap-3 sm:flex-row">
-          <input type="url" x-model="managedLink" x-on:input="managedCode = ''; managedOriginalQuery = ''; managedSources = ''; managedMessage = ''" placeholder="粘贴本站已有的订阅短链接" class="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-          <button type="button" x-on:click="loadManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy" class="shrink-0 whitespace-nowrap rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">载入订阅</button>
+        <div class="mt-4 border-t border-gray-200 pt-4 dark:border-slate-700">
+          <label for="managedLink" class="text-sm leading-relaxed text-gray-600 dark:text-gray-400">也可以粘贴其他格式的本站固定订阅链接：</label>
+          <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+            <input id="managedLink" type="url" x-model="managedLink" x-on:input="managedCode = ''; managedOriginalQuery = ''; managedSources = ''; managedMessage = ''" placeholder="粘贴本站已有的订阅短链接" class={`${FIELD} min-h-11 min-w-0 flex-1`} />
+            <button type="button" x-on:click="loadManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy" class={`${PRIMARY_BUTTON} shrink-0 whitespace-nowrap`}>载入订阅</button>
+          </div>
         </div>
         <div x-cloak x-show="managedCode" class="mt-4">
           <label for="managedSources" class="block text-sm font-medium text-gray-700 dark:text-gray-200">订阅来源（每行一个）</label>
-          <textarea id="managedSources" x-model="managedSources" rows="5" class="mt-2 w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"></textarea>
-          <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy || !managedSources.trim()" class="mt-3 rounded-lg bg-primary-600 px-5 py-2 font-medium text-white disabled:opacity-50">保存到原订阅</button>
+          <textarea id="managedSources" x-model="managedSources" rows="5" class={`${FIELD} mt-2 block w-full`}></textarea>
+          <button type="button" x-on:click="saveManagedSubscription()" x-bind:disabled="managedBusy || managedRowBusy || !managedSources.trim()" class={`${PRIMARY_BUTTON} mt-3`}>保存到原订阅</button>
         </div>
         <p x-cloak x-show="managedMessage" x-text="managedMessage" role="status" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></p>
       </section>
-      <form {...{'x-on:submit.prevent': 'submitForm'}} class="space-y-8">
+      <form {...{'x-on:submit.prevent': 'submitForm'}} class="space-y-5 sm:space-y-6">
 
       {/* Input Section */}
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 hover:shadow-md group">
+      <div class={CARD}>
         <TextareaWithActions
           id="input"
           name="input"
           label={t('shareUrls')}
           labelPrefix={
-            <span class="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300" aria-hidden="true">
               <i class="fas fa-link text-sm"></i>
             </span>
           }
@@ -126,7 +139,7 @@ export const Form = (props) => {
           rows={5}
           placeholder={t('urlPlaceholder')}
           required
-          labelActionsWrapperClass="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          labelActionsWrapperClass="flex shrink-0 gap-2"
           labelActions={[
             {
               key: 'paste',
@@ -134,7 +147,7 @@ export const Form = (props) => {
               label: t('paste'),
               hideLabelOnMobile: true,
               className:
-                'px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors flex items-center gap-1',
+                'min-h-9 px-2.5 text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-950 hover:text-primary-800 dark:hover:text-primary-300 transition-colors flex items-center gap-1',
               title: t('paste'),
               attrs: {
                 'x-on:click': "navigator.clipboard.readText().then(text => input = text).catch(() => {})"
@@ -146,7 +159,7 @@ export const Form = (props) => {
               label: t('clear'),
               hideLabelOnMobile: true,
               className:
-                'px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center gap-1',
+                'min-h-9 px-2.5 text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-700 dark:hover:text-red-400 transition-colors flex items-center gap-1',
               title: t('clear'),
               attrs: {
                 'x-on:click': "input = ''",
@@ -159,7 +172,7 @@ export const Form = (props) => {
 
       {/* Advanced Options Toggle */}
       <div 
-        class="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors" 
+        class={`${CARD} flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors`}
         x-on:click="showAdvanced = !showAdvanced"
         role="button"
         tabindex="0"
@@ -169,7 +182,7 @@ export const Form = (props) => {
         }}
       >
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center">
+          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-sm text-primary-700 dark:bg-primary-950 dark:text-primary-300" aria-hidden="true">
             <i class="fas fa-sliders-h"></i>
           </div>
           <span class="font-semibold text-gray-900 dark:text-white">{t('advancedOptions')}</span>
@@ -186,8 +199,8 @@ export const Form = (props) => {
   <div x-show="showAdvanced" {...{'x-transition:enter': 'transition ease-out duration-300', 'x-transition:enter-start': 'opacity-0 transform -translate-y-4', 'x-transition:enter-end': 'opacity-100 transform translate-y-0', 'x-transition:leave': 'transition ease-in duration-200', 'x-transition:leave-start': 'opacity-100 transform translate-y-0', 'x-transition:leave-end': 'opacity-0 transform -translate-y-4'}} class="space-y-6">
 
     {/* Rule Selection */ }
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <div class="flex items-center justify-between mb-4">
+    <div class={CARD}>
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <i class="fas fa-filter text-gray-400"></i>
           {t('ruleSelection')}
@@ -223,7 +236,7 @@ export const Form = (props) => {
   <CustomRules t={t} />
 
     {/* General Options */ }
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+    <div class={CARD}>
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <i class="fas fa-cog text-gray-400"></i>
               {t('generalSettings')}
@@ -279,7 +292,7 @@ export const Form = (props) => {
           </div>
 
   {/* Subconverter External Config */}
-  <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+  <div class={CARD}>
     <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-2">
       <i class="fas fa-file-export text-gray-400"></i>
       {t('subconverterConfigTitle')}
@@ -302,8 +315,8 @@ export const Form = (props) => {
   </div>
 
   {/* Base Config */ }
-  <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <div class="flex items-center justify-between mb-4">
+  <div class={CARD}>
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <i class="fas fa-file-code text-gray-400"></i>
                 {t('baseConfigSettings')}
@@ -367,7 +380,7 @@ export const Form = (props) => {
           </div >
 
   {/* User Agent */ }
-  <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+  <div class={CARD}>
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <i class="fas fa-user-secret text-gray-400"></i>
               {t('UASettings')}
@@ -405,7 +418,7 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
 
   {/* Results Section */ }
   <div x-cloak x-show="generatedLinks" x-data="{ copied: null }" {...{'x-transition:enter': 'transition ease-out duration-500', 'x-transition:enter-start': 'opacity-0 transform translate-y-8', 'x-transition:enter-end': 'opacity-100 transform translate-y-0'}} class="mt-12">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-8 transition-all duration-300 hover:shadow-md">
+    <div class={`${CARD} mb-6`}>
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <h2 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
           <span class="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center">
