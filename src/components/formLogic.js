@@ -476,6 +476,7 @@ export const formLogicFn = (t) => {
                     this.managedOriginalQuery = resolved.search;
                     this.managedSources = sources;
                     this.managedMessage = '已载入。每行一个订阅地址或节点；保存后固定链接不变。';
+                    setTimeout(() => document.getElementById('managedSources')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
                 } catch (error) {
                     this.managedMessage = error.message || '读取失败，请稍后重试。';
                 } finally {
