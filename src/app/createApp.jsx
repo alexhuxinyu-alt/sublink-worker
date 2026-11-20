@@ -22,6 +22,8 @@ import { PREDEFINED_RULE_SETS, UNIFIED_RULES, SING_BOX_CONFIG, SING_BOX_CONFIG_V
 
 const DEFAULT_USER_AGENT = 'curl/7.74.0';
 const BUILT_IN_RULE_NAMES = new Set(UNIFIED_RULES.map(rule => rule.name));
+const STATIC_ASSET_PATHS = ['/favicon.ico', '/vendor/js-yaml-4.3.2.min.js'];
+const SHORT_CODE_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 export function createApp(bindings = {}) {
     const runtime = normalizeRuntime(bindings);
@@ -33,8 +35,19 @@ export function createApp(bindings = {}) {
     const app = new Hono();
 
     app.use('*', async (c, next) => {
-        if (!isAuthConfigured(runtime.config)) return next();
-        if (isPublicSubscriptionRoute(c.req.path) || c.req.path === '/login' || c.req.path === '/logout') return next();
+        if (!STATIC_ASSET_PATHS.includes(c.req.path)) {
+            c.header('Cache-Control', 'private, no-store');
+            c.header('Referrer-Policy', 'no-referrer');
+        }
+        await next();
+    });
+
+    app.use('*', async (c, next) => {
+        if (STATIC_ASSET_PATHS.includes(c.req.path) || isPublicSubscriptionRoute(c.req.path) || c.req.path === '/login' || c.req.path === '/logout') return next();
+        if (!isAuthConfigured(runtime.config)) {
+            if (hasAuthSettings(runtime.config)) return c.text('Authentication is not fully configured.', 503);
+            return next();
+        }
         const session = readCookie(c.req.header('Cookie'), 'sublink_session');
         return await verifySession(session, runtime.config.authSessionSecret) ? next() : c.redirect('/login');
     });
@@ -336,7 +349,12 @@ export function createApp(bindings = {}) {
     });
 
     app.get('/shorten-v2', async (c) => {
+        if (c.req.header('Sec-Fetch-Site') === 'cross-site') return c.text('Cross-site request is not allowed', 403);
         try {
+            const customCode = c.req.query('shortCode');
+            if (customCode && (!SHORT_CODE_PATTERN.test(customCode) || customCode.length > 128 || customCode.startsWith('__'))) {
+                return c.text('Invalid short code', 400);
+            }
             const url = c.req.query('url');
             if (!url) {
                 return c.text('Missing URL parameter', 400);
@@ -350,7 +368,7 @@ export function createApp(bindings = {}) {
             const queryString = parsedUrl.search;
 
             const shortLinks = requireShortLinkService(services.shortLinks);
-            const code = await shortLinks.createShortLink(queryString, c.req.query('shortCode'));
+            const code = await shortLinks.createShortLink(queryString, customCode);
             return c.text(code);
         } catch (error) {
             return handleError(c, error, runtime.logger);
@@ -380,7 +398,6 @@ export function createApp(bindings = {}) {
                 const inferredName = knownNames.find(n => name.length > n.length && name.toLowerCase().startsWith(n.toLowerCase())) || null;
                 return { code: name, displayName: remark || inferredName, inferredName, remark, disabled: params.get('config') === 'disabled' };
             }));
-            c.header('Cache-Control', 'private, no-store');
             return c.json({ entries: entries.filter(Boolean), knownNames, cursor: page.list_complete ? null : page.cursor });
         } catch (error) {
             return handleError(c, error, runtime.logger);
@@ -491,9 +508,10 @@ export function createApp(bindings = {}) {
     const redirectHandler = (prefix) => async (c) => {
         try {
             const code = c.req.param('code');
+            if (!SHORT_CODE_PATTERN.test(code)) return c.text('Short URL not found', 404);
             const shortLinks = requireShortLinkService(services.shortLinks);
             const originalParam = await shortLinks.resolveShortCode(code);
-            if (!originalParam) return c.text('Short URL not found', 404);
+            if (typeof originalParam !== 'string' || !originalParam.startsWith('?')) return c.text('Short URL not found', 404);
 
             const url = new URL(c.req.url);
             return c.redirect(`${url.origin}/${prefix}${originalParam}`);
@@ -538,11 +556,11 @@ export function createApp(bindings = {}) {
 
             const prefix = pathParts[1];
             const shortCode = pathParts[2];
-            if (!['b', 'c', 'x', 's'].includes(prefix)) return c.text(t('invalidShortUrl'), 400);
+            if (!['b', 'c', 'x', 's'].includes(prefix) || !SHORT_CODE_PATTERN.test(shortCode)) return c.text(t('invalidShortUrl'), 400);
 
             const shortLinks = requireShortLinkService(services.shortLinks);
             const originalParam = await shortLinks.resolveShortCode(shortCode);
-            if (!originalParam) return c.text(t('shortUrlNotFound'), 404);
+            if (typeof originalParam !== 'string' || !originalParam.startsWith('?')) return c.text(t('shortUrlNotFound'), 404);
 
             const mapping = { b: 'singbox', c: 'clash', x: 'xray', s: 'surge' };
             const originalUrl = `${urlObj.origin}/${mapping[prefix]}${originalParam}`;
@@ -552,7 +570,7 @@ export function createApp(bindings = {}) {
         }
     });
 
-    app.get('/favicon.ico', async (c) => {
+    const fetchStaticAsset = async (c) => {
         if (!runtime.assetFetcher) {
             return c.notFound();
         }
@@ -562,7 +580,8 @@ export function createApp(bindings = {}) {
             runtime.logger.warn('Asset fetch failed', error);
             return c.notFound();
         }
-    });
+    };
+    for (const path of STATIC_ASSET_PATHS) app.get(path, fetchStaticAsset);
 
     return app;
 }
@@ -602,12 +621,20 @@ function parseBooleanFlag(value) {
 }
 
 function isAuthConfigured(config) { return Boolean(config.authUsername && config.authPassword && config.authSessionSecret); }
+function hasAuthSettings(config) {
+    return [config.authUsername, config.authPassword, config.authSessionSecret].some(value => value != null);
+}
 function isPublicSubscriptionRoute(path) { return ['/singbox', '/clash', '/surge', '/xray'].includes(path) || /^\/[bcxs]\/[a-zA-Z0-9_-]+$/.test(path); }
 function readCookie(header, name) {
     if (!header) return null;
     const prefix = `${name}=`;
     const cookie = header.split(';').map(value => value.trim()).find(value => value.startsWith(prefix));
-    return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+    if (!cookie) return null;
+    try {
+        return decodeURIComponent(cookie.slice(prefix.length));
+    } catch {
+        return null;
+    }
 }
 function serializeCookie(name, value, maxAge) { return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`; }
 
