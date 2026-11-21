@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import yaml from 'js-yaml';
 import { createApp } from '../src/app/createApp.jsx';
 import { MemoryKVAdapter } from '../src/adapters/kv/memoryKv.js';
 import { createSession } from '../src/services/authService.js';
@@ -19,6 +20,47 @@ async function setup() {
 }
 
 describe('managing existing subscriptions', () => {
+    it('refreshes native Clash nodes through the same short URL without a separate provider download', async () => {
+        const { app, kv } = await setup();
+        const reality = {
+            name: 'DMIT Reality', type: 'vless', server: 'one.example', port: 443,
+            uuid: '5b7eec2f-ce59-4ea7-b957-0a6fc33de246', tls: true,
+            servername: 'tls.example', 'client-fingerprint': 'chrome', flow: 'xtls-rprx-vision',
+            'reality-opts': { 'public-key': 'test-key', 'short-id': '1234' }
+        };
+        const cdn = {
+            name: 'DMIT CDN', type: 'vmess', server: 'cdn.example', port: 443,
+            uuid: 'ac64addb-0a03-4771-95f1-17c681ecec88', tls: true,
+            servername: 'cdn.example', 'client-fingerprint': 'chrome', alpn: ['http/1.1'],
+            network: 'ws', 'ws-opts': { path: '/test', headers: { Host: 'cdn.example' } }
+        };
+        let upstream = [cdn];
+        const fetchSource = vi.fn(async () => new Response(yaml.dump({ proxies: upstream })));
+        vi.stubGlobal('fetch', fetchSource);
+        try {
+            const refresh = async () => {
+                const response = await app.request('https://example.test/c/ALEX_TEST');
+                expect(response.status).toBe(302);
+                const converted = await app.request(response.headers.get('Location'));
+                expect(converted.status).toBe(200);
+                expect(converted.headers.get('Cache-Control')).toContain('no-store');
+                const config = yaml.load(await converted.text());
+                expect(config['proxy-providers'] ?? {}).toEqual({});
+                expect(config.proxies).toEqual(upstream);
+                expect(config['proxy-groups'].some(group => upstream.every(proxy => group.proxies?.includes(proxy.name)))).toBe(true);
+            };
+            await refresh();
+            upstream = [reality, cdn];
+            await refresh();
+            upstream = [cdn];
+            await refresh();
+            expect(fetchSource).toHaveBeenCalledTimes(3);
+            expect(await kv.get('ALEX_TEST')).toBe(original);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('lists existing subscriptions only for authenticated users and omits backups and config files', async () => {
         const { app, kv } = await setup();
         await kv.put('__subscription_backup__:ALEX_TEST:1:test', original);

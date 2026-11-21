@@ -102,6 +102,11 @@ export class BaseConfigBuilder {
 
                             // If format is compatible with target client, use as provider
                             if (this.isCompatibleProviderFormat(format)) {
+                                const inlineItems = this.getInlineProviderItems(content);
+                                if (inlineItems !== null) {
+                                    parsedItems.push(...inlineItems);
+                                    continue;
+                                }
                                 this.providerUrls.push(originalUrl);
                                 // Content is already fetched; keep node names so country
                                 // groups can be built over provider members later.
@@ -193,6 +198,10 @@ export class BaseConfigBuilder {
      */
     isCompatibleProviderFormat(format) {
         return false;  // Default: no provider support
+    }
+
+    getInlineProviderItems() {
+        return null;
     }
 
     /**

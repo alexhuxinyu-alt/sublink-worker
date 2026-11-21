@@ -199,7 +199,8 @@ export function createApp(bindings = {}) {
                 enableClashUI,
                 externalController,
                 externalUiDownloadUrl,
-                includeAutoSelect
+                includeAutoSelect,
+                { inlineClashSources: true }
             );
             await builder.build();
             const userinfo = builder.getSubscriptionUserinfo();

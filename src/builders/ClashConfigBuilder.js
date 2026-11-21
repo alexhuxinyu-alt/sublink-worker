@@ -47,8 +47,10 @@ function getClashUdpValue(proxy, defaultEnabled = true) {
     return defaultEnabled;
 }
 
+const nativeClashProxy = Symbol('nativeClashProxy');
+
 export class ClashConfigBuilder extends BaseConfigBuilder {
-    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, includeAutoSelect = true) {
+    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, includeAutoSelect = true, { inlineClashSources = false } = {}) {
         if (!baseConfig) {
             baseConfig = CLASH_CONFIG;
         }
@@ -60,6 +62,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
         this.enableClashUI = enableClashUI;
         this.externalController = externalController;
         this.externalUiDownloadUrl = externalUiDownloadUrl;
+        this.inlineClashSources = inlineClashSources;
     }
 
     /**
@@ -69,6 +72,17 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
      */
     isCompatibleProviderFormat(format) {
         return format === 'clash';
+    }
+
+    getInlineProviderItems(content) {
+        if (!this.inlineClashSources) return null;
+        const proxies = yaml.load(content)?.proxies;
+        if (!Array.isArray(proxies) || proxies.some(proxy =>
+            typeof proxy?.name !== 'string' || !proxy.name.trim() || typeof proxy.type !== 'string')) {
+            return null;
+        }
+        // Keep native fields intact so refreshing a profile does not depend on a second download.
+        return proxies.map(proxy => ({ tag: proxy.name, [nativeClashProxy]: proxy }));
     }
 
     /**
@@ -129,6 +143,9 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
     }
 
     convertProxy(proxy) {
+        if (proxy[nativeClashProxy]) {
+            return { ...proxy[nativeClashProxy], name: proxy.tag };
+        }
         switch (proxy.type) {
             case 'shadowsocks':
                 return {
