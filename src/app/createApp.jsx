@@ -15,14 +15,12 @@ import { encodeBase64, tryDecodeSubscriptionLines } from '../utils.js';
 import { APP_NAME, APP_SUBTITLE } from '../constants.js';
 import { ShortLinkService } from '../services/shortLinkService.js';
 import { ConfigStorageService } from '../services/configStorageService.js';
-import { createSourceBridge, isSourceLookup, SourceBridgeError } from '../services/sourceBridge.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { createSession, credentialsMatch, verifySession } from '../services/authService.js';
-import { PREDEFINED_RULE_SETS, UNIFIED_RULES, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
+import { PREDEFINED_RULE_SETS, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
 
 const DEFAULT_USER_AGENT = 'curl/7.74.0';
-const BUILT_IN_RULE_NAMES = new Set(UNIFIED_RULES.map(rule => rule.name));
 const STATIC_ASSET_PATHS = ['/favicon.ico', '/vendor/js-yaml-4.3.2.min.js'];
 const SHORT_CODE_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -32,7 +30,6 @@ export function createApp(bindings = {}) {
         shortLinks: runtime.kv ? new ShortLinkService(runtime.kv, { shortLinkTtlSeconds: runtime.config.shortLinkTtlSeconds }) : null,
         configStorage: runtime.kv ? new ConfigStorageService(runtime.kv, { configTtlSeconds: runtime.config.configTtlSeconds }) : null
     };
-    const sourceBridge = createSourceBridge(runtime.config);
 
     const app = new Hono();
 
@@ -85,20 +82,22 @@ export function createApp(bindings = {}) {
         const subtitle = APP_SUBTITLE[lang] || APP_SUBTITLE['zh-CN'];
 
         return c.html(
-            <Layout title={t('pageTitle')} description={t('pageDescription')} keywords={t('pageKeywords')} lang={lang}>
+            <Layout title={t('pageTitle')} description={t('pageDescription')} keywords={t('pageKeywords')}>
                 <div class="flex flex-col min-h-screen">
                     <Navbar />
                     <main class="flex-1">
-                        <div class="mx-auto max-w-4xl px-4 pb-8 pt-24 sm:px-6 sm:pt-28">
-                            <header class="mb-7 text-center sm:mb-10">
-                                <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-5xl">
-                                    {APP_NAME}
-                                </h1>
-                                <p class="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300 sm:mt-3 sm:text-base">
-                                    {subtitle}
-                                </p>
-                            </header>
-                            <Form t={t} lang={lang} sourceBridgeEnabled={Boolean(sourceBridge && isAuthConfigured(runtime.config))} />
+                        <div class="container mx-auto px-4 py-8 pt-24">
+                            <div class="max-w-4xl mx-auto">
+                                <div class="text-center mb-12 pt-8">
+                                    <h1 class="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">
+                                        {APP_NAME}
+                                    </h1>
+                                    <p class="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+                                        {subtitle}
+                                    </p>
+                                </div>
+                                <Form t={t} lang={lang} />
+                            </div>
                         </div>
                     </main>
                     <Footer />
@@ -131,7 +130,7 @@ export function createApp(bindings = {}) {
             const singboxConfigVersion = resolveSingboxConfigVersion(requestedSingboxVersion, requestUserAgent);
 
             let baseConfig = singboxConfigVersion === '1.11' ? SING_BOX_CONFIG_V1_11 : SING_BOX_CONFIG;
-            if (configId) {
+            if (configId?.startsWith('singbox_')) {
                 const storage = requireConfigStorage(services.configStorage);
                 const storedConfig = await storage.getConfigById(configId);
                 if (storedConfig) {
@@ -183,7 +182,7 @@ export function createApp(bindings = {}) {
             const lang = c.get('lang');
 
             let baseConfig;
-            if (configId) {
+            if (configId?.startsWith('clash_')) {
                 const storage = requireConfigStorage(services.configStorage);
                 baseConfig = await storage.getConfigById(configId);
             }
@@ -230,7 +229,7 @@ export function createApp(bindings = {}) {
             const lang = c.get('lang');
 
             let baseConfig;
-            if (configId) {
+            if (configId?.startsWith('surge_')) {
                 const storage = requireConfigStorage(services.configStorage);
                 baseConfig = await storage.getConfigById(configId);
             }
@@ -351,14 +350,13 @@ export function createApp(bindings = {}) {
         return c.text(encodeBase64(finalString), 200, responseHeaders);
     });
 
-    app.get('/shorten-v2', async (c) => {
+    // POST keeps long subscription URLs out of the request line, which
+    // Cloudflare rejects with 414 past its URI limit; GET stays for API callers.
+    const shortenHandler = (readParams) => async (c) => {
         if (c.req.header('Sec-Fetch-Site') === 'cross-site') return c.text('Cross-site request is not allowed', 403);
         try {
-            const customCode = c.req.query('shortCode');
-            if (customCode && (!SHORT_CODE_PATTERN.test(customCode) || customCode.length > 128 || customCode.startsWith('__'))) {
-                return c.text('Invalid short code', 400);
-            }
-            const url = c.req.query('url');
+            const { url, shortCode } = await readParams(c);
+            if (shortCode && (typeof shortCode !== 'string' || !SHORT_CODE_PATTERN.test(shortCode) || shortCode.length > 128 || shortCode.startsWith('__'))) return c.text('Invalid short code', 400);
             if (!url) {
                 return c.text('Missing URL parameter', 400);
             }
@@ -371,166 +369,15 @@ export function createApp(bindings = {}) {
             const queryString = parsedUrl.search;
 
             const shortLinks = requireShortLinkService(services.shortLinks);
-            const code = await shortLinks.createShortLink(queryString, customCode);
+            const code = await shortLinks.createShortLink(queryString, shortCode);
             return c.text(code);
         } catch (error) {
             return handleError(c, error, runtime.logger);
         }
-    });
+    };
 
-    app.get('/manage-source-catalog', async (c) => {
-        if (!isAuthConfigured(runtime.config) || !sourceBridge) return c.text('Source sync is not configured', 503);
-        try {
-            return c.json(await sourceBridge.catalog());
-        } catch (error) {
-            return c.text(error instanceof SourceBridgeError ? error.message : 'Source catalog is temporarily unavailable', 502);
-        }
-    });
-
-    app.post('/manage-source-links', async (c) => {
-        if (!isAuthConfigured(runtime.config) || !sourceBridge) return c.text('Source sync is not configured', 503);
-        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
-        const contentType = c.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
-        if (contentType !== 'application/json') return c.text('Invalid content type', 415);
-        const lookup = await c.req.json().catch(() => null);
-        if (!isSourceLookup(lookup)) return c.text('Invalid source lookup', 400);
-        try {
-            return c.json(await sourceBridge.sources(lookup));
-        } catch (error) {
-            return c.text(error instanceof SourceBridgeError ? error.message : 'Subscription sources are temporarily unavailable', 502);
-        }
-    });
-
-    app.get('/manage-subscriptions', async (c) => {
-        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
-        if (!runtime.kv || typeof runtime.kv.list !== 'function') return c.text('Listing is not available for this storage', 501);
-        try {
-            const cursor = c.req.query('cursor');
-            if (cursor && cursor.length > 1024) return c.text('Invalid cursor', 400);
-            const page = await runtime.kv.list({ limit: 20, ...(cursor ? { cursor } : {}) });
-            let knownNames = [];
-            try {
-                const stored = JSON.parse(await runtime.kv.get('__subscription_known_names__') || '[]');
-                if (Array.isArray(stored)) knownNames = stored.filter(n => typeof n === 'string' && /^[a-zA-Z0-9_-]{1,40}$/.test(n)).sort((a, b) => b.length - a.length);
-            } catch { /* Invalid metadata should not prevent subscription management. */ }
-            const entries = await Promise.all(page.keys.map(async ({ name }) => {
-                if (!/^[a-zA-Z0-9_-]{1,128}$/.test(name) || name === 'TEST_258e5ba3d8693cf828a5e880') return null;
-                const value = await runtime.kv.get(name);
-                if (typeof value !== 'string' || !value.startsWith('?')) return null;
-                const params = new URLSearchParams(value);
-                if (!params.has('config')) return null;
-                let remark = '';
-                try { const stored = JSON.parse(await runtime.kv.get(`__subscription_remark__:${name}`) || '""'); if (typeof stored === 'string') remark = stored; } catch { /* Ignore invalid metadata. */ }
-                const inferredName = knownNames.find(n => name.length > n.length && name.toLowerCase().startsWith(n.toLowerCase())) || null;
-                return { code: name, displayName: remark || inferredName, inferredName, remark, disabled: params.get('config') === 'disabled' };
-            }));
-            return c.json({ entries: entries.filter(Boolean), knownNames, cursor: page.list_complete ? null : page.cursor });
-        } catch (error) {
-            return handleError(c, error, runtime.logger);
-        }
-    });
-
-    app.post('/manage-subscription-names', async (c) => {
-        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
-        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
-        if (!(c.req.header('Content-Type') || '').toLowerCase().startsWith('application/json')) return c.text('Invalid content type', 415);
-        try {
-            const { names } = await c.req.json();
-            if (!Array.isArray(names) || names.length > 200 || names.some(n => typeof n !== 'string' || !/^[a-zA-Z0-9_-]{1,40}$/.test(n))) return c.text('Invalid names', 400);
-            const unique = [...new Map(names.map(n => [n.toLowerCase(), n])).values()];
-            await runtime.kv.put('__subscription_known_names__', JSON.stringify(unique));
-            return c.json({ saved: true });
-        } catch (error) { return handleError(c, error, runtime.logger); }
-    });
-
-    app.post('/manage-subscription-remark', async (c) => {
-        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
-        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
-        if (!(c.req.header('Content-Type') || '').toLowerCase().startsWith('application/json')) return c.text('Invalid content type', 415);
-        try {
-            const { code, remark } = await c.req.json();
-            if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code) || typeof remark !== 'string' || remark.length > 80 || /[\u0000-\u001f\u007f]/.test(remark)) return c.text('Invalid remark', 400);
-            const current = await requireShortLinkService(services.shortLinks).resolveShortCode(code);
-            if (!current || !new URLSearchParams(current).has('config')) return c.text('Subscription not found', 404);
-            await runtime.kv.put(`__subscription_remark__:${code}`, JSON.stringify(remark.trim()));
-            return c.json({ saved: true });
-        } catch (error) { return handleError(c, error, runtime.logger); }
-    });
-
-    app.post('/manage-subscription-delete', async (c) => {
-        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
-        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
-        const contentType = c.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
-        if (contentType !== 'application/json') return c.text('Invalid content type', 415);
-        try {
-            const { code, confirmation } = (await c.req.json()) ?? {};
-            if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code)) return c.text('Invalid short code', 400);
-            if (confirmation !== '删除订阅') return c.text('Deletion confirmation did not match', 400);
-
-            const service = requireShortLinkService(services.shortLinks);
-            const current = await service.resolveShortCode(code);
-            if (typeof current !== 'string' || !current.startsWith('?') || !new URLSearchParams(current).has('config')) {
-                return c.text('Subscription not found', 404);
-            }
-
-            const remarkKey = `__subscription_remark__:${code}`;
-            const remark = await runtime.kv.get(remarkKey);
-            // Keep a short recovery window without keeping a deleted subscription publicly accessible.
-            const backupKey = `__subscription_deleted__:${code}:${Date.now()}:${crypto.randomUUID()}`;
-            await runtime.kv.put(backupKey, JSON.stringify({ query: current, remark }), { expirationTtl: 30 * 24 * 60 * 60 });
-            if (await service.resolveShortCode(code) !== current) return c.text('Subscription changed; reload before deleting', 409);
-            await runtime.kv.delete(code);
-            if (remark !== null) {
-                try {
-                    await runtime.kv.delete(remarkKey);
-                } catch {
-                    runtime.logger.warn?.('Deleted short link but could not remove its remark');
-                }
-            }
-            return c.json({ deleted: true });
-        } catch (error) {
-            if (error instanceof SyntaxError) return c.text('Invalid JSON', 400);
-            return handleError(c, error, runtime.logger);
-        }
-    });
-
-    // Keep the same short code so existing clients can use the updated subscription.
-    app.post('/manage-subscription', async (c) => {
-        if (!isAuthConfigured(runtime.config)) return c.text('Authentication is required', 503);
-        if (c.req.header('Origin') !== new URL(c.req.url).origin) return c.text('Invalid origin', 403);
-        if (!(c.req.header('Content-Type') || '').toLowerCase().startsWith('application/json')) return c.text('Invalid content type', 415);
-        try {
-            const { code, originalQuery, sources, selectedRules } = await c.req.json();
-            if (typeof code !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(code) ||
-                typeof originalQuery !== 'string' || !originalQuery.startsWith('?') || originalQuery.length > 64000 ||
-                typeof sources !== 'string' || !sources.trim() || sources.length > 48000) {
-                return c.text('Invalid subscription data', 400);
-            }
-            if (selectedRules !== undefined &&
-                (!Array.isArray(selectedRules) || selectedRules.length === 0 || selectedRules.some(name => !BUILT_IN_RULE_NAMES.has(name)))) {
-                return c.text('Invalid built-in rules', 400);
-            }
-            const service = requireShortLinkService(services.shortLinks);
-            const current = await service.resolveShortCode(code);
-            if (!current) return c.text('Subscription not found', 404);
-            if (current !== originalQuery) return c.text('Subscription changed; reload before saving', 409);
-            const params = new URLSearchParams(current);
-            if (!params.has('config')) return c.text('Subscription has no editable sources', 400);
-            params.set('config', sources.trim());
-            if (selectedRules !== undefined) params.set('selectedRules', JSON.stringify([...new Set(selectedRules)]));
-            const updatedQuery = `?${params.toString()}`;
-            if (updatedQuery === current) return c.json({ updated: false });
-            // A separate backup makes accidental subscription edits recoverable.
-            const backupKey = `__subscription_backup__:${code}:${Date.now()}:${crypto.randomUUID()}`;
-            await runtime.kv.put(backupKey, current);
-            if (await service.resolveShortCode(code) !== current) return c.text('Subscription changed; reload before saving', 409);
-            await service.createShortLink(updatedQuery, code);
-            return c.json({ updated: true });
-        } catch (error) {
-            if (error instanceof SyntaxError) return c.text('Invalid JSON', 400);
-            return handleError(c, error, runtime.logger);
-        }
-    });
+    app.get('/shorten-v2', shortenHandler(async (c) => ({ url: c.req.query('url'), shortCode: c.req.query('shortCode') })));
+    app.post('/shorten-v2', shortenHandler(async (c) => (await c.req.json().catch(() => null)) ?? {}));
 
     const redirectHandler = (prefix) => async (c) => {
         try {

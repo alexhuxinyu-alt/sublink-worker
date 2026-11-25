@@ -5,13 +5,6 @@ export function createCloudflareRuntime(env) {
         kv: env?.SUBLINK_KV ? new CloudflareKVAdapter(env.SUBLINK_KV) : null,
         assetFetcher: env?.ASSETS ? (request) => env.ASSETS.fetch(request) : null,
         logger: console,
-        config: {
-            authUsername: env?.AUTH_USERNAME,
-            authPassword: env?.AUTH_PASSWORD,
-            authSessionSecret: env?.AUTH_SESSION_SECRET,
-            authSessionHours: Number(env?.AUTH_SESSION_HOURS) || 24,
-            sourceBridgeOrigin: env?.SUBLINK_BRIDGE_ORIGIN,
-            sourceBridgeToken: env?.SUBLINK_BRIDGE_TOKEN
-        }
+        config: { authUsername: env?.AUTH_USERNAME, authPassword: env?.AUTH_PASSWORD, authSessionSecret: env?.AUTH_SESSION_SECRET, authSessionHours: Number(env?.AUTH_SESSION_HOURS) || 24 }
     };
 }

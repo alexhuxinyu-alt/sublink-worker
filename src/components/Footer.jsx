@@ -6,8 +6,8 @@ export const Footer = () => {
     const currentYear = new Date().getFullYear();
 
     return (
-        <footer class="mt-4 border-t border-gray-200 bg-white/60 py-6 dark:border-gray-800 dark:bg-gray-900/60 sm:mt-8">
-            <div class="mx-auto max-w-4xl px-4 sm:px-6">
+        <footer class="mt-12 py-8 border-t border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+            <div class="container mx-auto px-4">
                 <div class="flex flex-col md:flex-row items-center justify-between gap-4">
                     <div class="flex flex-col md:flex-row items-center gap-2 md:gap-4 text-gray-600 dark:text-gray-400 text-center md:text-left">
                         <span class="text-sm">© {currentYear} {APP_NAME}. All rights reserved.</span>

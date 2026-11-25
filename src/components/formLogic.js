@@ -1,175 +1,5 @@
 export const formLogicFn = (t) => {
-    window.sourcePickerData = function (target) {
-        let request = null;
-        let previewTimer;
-        let editorCode = '';
-        const managed = target === 'managed';
-        const previewDraft = sources => [...new Set(sources.flatMap(source => source.urls))].join('\n');
-        const readSourceData = async (path, options, signal) => {
-            const response = await fetch(path, { ...options, signal, cache: 'no-store', redirect: 'error' });
-            if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) {
-                throw new Error('Source lookup failed');
-            }
-            return response.json();
-        };
-
-        return {
-            sourceUsers: [],
-            sourceUnavailable: [],
-            sourceEmail: '',
-            sourceServerIds: [],
-            sourcePreview: [],
-            sourceMessage: '',
-            sourceBusy: false,
-
-            async toggleSourcePicker(open) {
-                if (open) {
-                    editorCode = this.managedCode;
-                    await this.refreshSourceCatalog();
-                } else {
-                    this.destroy();
-                }
-            },
-
-            destroy() {
-                clearTimeout(previewTimer);
-                request?.abort();
-                request = null;
-                if (managed && editorCode && editorCode === this.managedCode) this.managedPickerBlocked = false;
-                this.sourceBusy = false;
-                this.sourceUsers = [];
-                this.sourceUnavailable = [];
-                this.sourceEmail = '';
-                this.sourceServerIds = [];
-                this.clearSourcePreview();
-            },
-
-            async refreshSourceCatalog() {
-                if (this.sourceBusy || (managed && (this.managedBusy || this.managedRowBusy))) return;
-                this.destroy();
-                const current = request = new AbortController();
-                this.sourceBusy = true;
-                this.sourceMessage = '正在读取服务器上的客户端…';
-                try {
-                    const catalog = await readSourceData('/manage-source-catalog', {}, current.signal);
-                    if (request !== current) return;
-                    this.sourceUsers = catalog.users;
-                    this.sourceUnavailable = catalog.unavailable;
-                    this.sourceMessage = catalog.users.length ? '' : '暂时没有可选的客户端。';
-                } catch {
-                    if (request === current) this.sourceMessage = '无法读取服务器列表，请检查登录状态后重试。';
-                } finally {
-                    if (request === current) {
-                        request = null;
-                        this.sourceBusy = false;
-                    }
-                }
-            },
-
-            sourceServerChoices() {
-                return this.sourceUsers.find(user => user.email === this.sourceEmail)?.servers ?? [];
-            },
-
-            clearSourcePreview() {
-                this.sourcePreview = [];
-                this.sourceMessage = '';
-            },
-
-            scheduleManagedSourcePreview() {
-                if (!editorCode || editorCode !== this.managedCode || this.managedSourceTab !== 'picker' || this.managedBusy || this.managedRowBusy) return;
-                clearTimeout(previewTimer);
-                request?.abort();
-                request = null;
-                this.sourceBusy = false;
-                this.clearSourcePreview();
-                this.managedPickerBlocked = Boolean(this.sourceEmail && this.sourceServerIds.length);
-                if (this.managedPickerBlocked) {
-                    this.sourceMessage = '正在读取所选来源…';
-                    previewTimer = setTimeout(() => this.previewSourceLinks(), 250);
-                } else {
-                    this.managedPickedSources = '';
-                }
-            },
-
-            async previewSourceLinks() {
-                if (this.sourceBusy || !this.sourceEmail || !this.sourceServerIds.length) return;
-                if (managed && this.sourceUnavailable.length) {
-                    this.sourceMessage = '有服务器尚未同步，当前草稿已保留。请刷新后再试。';
-                    return;
-                }
-                const servers = [...this.sourceServerIds];
-                const names = new Map(this.sourceServerChoices().map(server => [server.id, server.name]));
-                const current = request = new AbortController();
-                this.clearSourcePreview();
-                this.sourceBusy = true;
-                this.sourceMessage = '正在读取所选来源…';
-                try {
-                    const result = await readSourceData('/manage-source-links', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email: this.sourceEmail, servers })
-                    }, current.signal);
-                    if (request !== current || (managed && (editorCode !== this.managedCode || this.managedSourceTab !== 'picker'))) return;
-                    if (result.unavailable.some(server => managed || servers.includes(server.id))) {
-                        throw new Error('Source unavailable');
-                    }
-                    const sources = new Map(servers.map(id => [id, []]));
-                    for (const source of result.sources) {
-                        const matches = sources.get(source.serverId);
-                        if (!matches) continue;
-                        const url = new URL(source.url);
-                        if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid source URL');
-                        matches.push(url.href);
-                    }
-                    const preview = servers.map(id => {
-                        const urls = sources.get(id);
-                        if (!urls.length || !names.has(id)) throw new Error('Selected source is missing');
-                        return { id, name: names.get(id), urls };
-                    });
-                    if (managed) {
-                        this.managedPickedSources = previewDraft(preview);
-                        this.managedPickerBlocked = false;
-                    } else {
-                        this.sourcePreview = preview;
-                    }
-                    this.sourceMessage = '';
-                } catch {
-                    if (request === current) this.sourceMessage = '所选服务器有来源不可用，当前草稿已保留。请刷新后重试。';
-                } finally {
-                    if (request === current) {
-                        request = null;
-                        this.sourceBusy = false;
-                    }
-                }
-            },
-
-            applySourcePreview() {
-                if (managed || this.sourceBusy || !this.sourcePreview.length) return;
-                this.inputFromSourcePicker = true;
-                clearTimeout(this.parseDebounceTimer);
-                this.input = previewDraft(this.sourcePreview);
-                this.generatedLinks = null;
-                this.shortenedLinks = null;
-                this.qrCodeUrl = null;
-                this.clearSourcePreview();
-                this.sourceMessage = '已填入草稿，可以继续核对。';
-            }
-        };
-    };
-
     window.formData = function () {
-        const sourceLineIndexes = lines => lines.flatMap((line, index) => line.trim() ? [index] : []);
-        const sourceLabel = line => {
-            try {
-                const url = new URL(line.trim());
-                if (url.protocol === 'http:' || url.protocol === 'https:') return url.host;
-                const protocol = url.protocol.slice(0, -1).toUpperCase();
-                return url.hash ? `${protocol} · ${decodeURIComponent(url.hash.slice(1))}` : `${protocol} 节点`;
-            } catch {
-                return '订阅内容';
-            }
-        };
-
         // Inline parseSurgeConfigInput to make it available in toString()
         const parseSurgeValue = (rawValue = '') => {
             const trimmed = rawValue.trim();
@@ -241,7 +71,6 @@ export const formLogicFn = (t) => {
 
         return {
             input: '',
-            inputFromSourcePicker: false,
             showAdvanced: false,
             // Accordion states for each section (二级手风琴状态)
             accordionSections: {
@@ -252,7 +81,7 @@ export const formLogicFn = (t) => {
                 ua: false          // User Agent
             },
             selectedRules: [],
-            selectedPredefinedRule: 'minimal',
+            selectedPredefinedRule: 'balanced',
             subconverterCopied: false,
             groupByCountry: false,
             includeAutoSelect: true,
@@ -273,27 +102,8 @@ export const formLogicFn = (t) => {
             loading: false,
             generatedLinks: null,
             shortenedLinks: null,
-            qrCodeUrl: null,
-            qrCodeLabel: '',
             shortening: false,
             customShortCode: '',
-            newSubscriptionRemark: '',
-            managedLink: '',
-            managedCode: '',
-            managedSourceTab: 'picker',
-            managedSources: '',
-            managedPickedSources: '',
-            managedPickerBlocked: false,
-            managedOriginalQuery: '',
-            managedRulePreset: 'keep',
-            managedSelectedRules: [],
-            managedBusy: false,
-            managedMessage: '',
-            managedSubscriptions: [],
-            managedListMessage: '',
-            managedListBusy: false,
-            managedRowBusy: false,
-            managedKnownNames: '',
             parsingUrl: false,
             parseDebounceTimer: null,
             // These will be populated from window.APP_TRANSLATIONS
@@ -304,7 +114,6 @@ export const formLogicFn = (t) => {
             showFullLinksText: '',
 
             init() {
-                this.refreshManagedSubscriptions();
                 // Load translations
                 if (window.APP_TRANSLATIONS) {
                     this.processingText = window.APP_TRANSLATIONS.processing;
@@ -320,6 +129,7 @@ export const formLogicFn = (t) => {
 
                 // Load saved data
                 this.input = localStorage.getItem('inputTextarea') || '';
+                this.showAdvanced = localStorage.getItem('advancedToggle') === 'true';
                 this.groupByCountry = localStorage.getItem('groupByCountry') === 'true';
                 this.includeAutoSelect = localStorage.getItem('includeAutoSelect') !== 'false';
                 this.enableClashUI = localStorage.getItem('enableClashUI') === 'true';
@@ -347,12 +157,10 @@ export const formLogicFn = (t) => {
 
                 // Watchers to save state
                 this.$watch('input', val => {
-                    if (!val) this.inputFromSourcePicker = false;
-                    if (!this.inputFromSourcePicker) {
-                        localStorage.setItem('inputTextarea', val);
-                        this.handleInputChange(val);
-                    }
+                    localStorage.setItem('inputTextarea', val);
+                    this.handleInputChange(val);
                 });
+                this.$watch('showAdvanced', val => localStorage.setItem('advancedToggle', val));
                 this.$watch('groupByCountry', val => localStorage.setItem('groupByCountry', val));
                 this.$watch('includeAutoSelect', val => localStorage.setItem('includeAutoSelect', val));
                 this.$watch('enableClashUI', val => localStorage.setItem('enableClashUI', val));
@@ -538,7 +346,6 @@ export const formLogicFn = (t) => {
                     this.input = '';
                     this.generatedLinks = null;
                     this.shortenedLinks = null;
-                    this.qrCodeUrl = null;
                     this.customShortCode = '';
                     // Also clear from localStorage
                     localStorage.removeItem('customShortCode');
@@ -558,7 +365,6 @@ export const formLogicFn = (t) => {
             async submitForm() {
                 this.loading = true;
                 this.shortenedLinks = null; // Reset shortened links when generating new links
-                this.qrCodeUrl = null;
                 try {
                     // Get custom rules from the child component via the hidden input
                     const customRulesInput = document.querySelector('input[name="customRules"]');
@@ -610,261 +416,6 @@ export const formLogicFn = (t) => {
                 }
             },
 
-            async refreshManagedSubscriptions() {
-                if (this.managedListBusy || this.managedRowBusy) return;
-                this.managedListBusy = true;
-                this.managedListMessage = '';
-                try {
-                    const entries = [];
-                    let cursor = null;
-                    do {
-                        const response = await fetch(`/manage-subscriptions${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { cache: 'no-store' });
-                        if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) throw new Error('订阅列表加载失败，请检查登录状态。');
-                        const page = await response.json();
-                        entries.push(...page.entries);
-                        if (Array.isArray(page.knownNames)) this.managedKnownNames = page.knownNames.join(', ');
-                        cursor = page.cursor || null;
-                    } while (cursor);
-                    this.managedSubscriptions = entries;
-                    this.managedListMessage = entries.length ? '' : '暂时没有可管理的订阅。';
-                } catch (error) {
-                    this.managedListMessage = error.message || '订阅列表加载失败，请稍后重试。';
-                } finally {
-                    this.managedListBusy = false;
-                }
-            },
-
-            async saveManagedNames() {
-                try {
-                    const names = this.managedKnownNames.split(/[\s,，]+/).map(x => x.trim()).filter(Boolean);
-                    const response = await fetch('/manage-subscription-names', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names }) });
-                    if (!response.ok) throw new Error('保存识别名失败，请检查名称。');
-                    await this.refreshManagedSubscriptions();
-                    this.managedListMessage = '识别名已保存；没有匹配的链接会显示未识别。';
-                } catch (error) { this.managedListMessage = error.message || '保存失败，请稍后重试。'; }
-            },
-
-            async saveSubscriptionRemark(subscription) {
-                if (this.managedRowBusy || this.managedListBusy) return;
-                this.managedRowBusy = true;
-                subscription.remarkError = false;
-                subscription.remarkStatus = '正在保存…';
-                const remark = subscription.remark.trim();
-                try {
-                    const response = await fetch('/manage-subscription-remark', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code: subscription.code, remark })
-                    });
-                    if (!response.ok || response.redirected || !(await response.json()).saved) throw new Error('Remark was not saved');
-                    subscription.remark = remark;
-                    subscription.displayName = remark || subscription.inferredName;
-                    subscription.remarkStatus = remark ? '备注已保存' : '备注已清空';
-                } catch {
-                    subscription.remarkError = true;
-                    subscription.remarkStatus = '保存备注失败，请检查登录状态后重试。';
-                } finally {
-                    this.managedRowBusy = false;
-                }
-            },
-
-            setManagedDeleteConfirmation(subscription, open) {
-                subscription.deleteConfirmation = '';
-                subscription.deleteStatus = '';
-                subscription.confirmDelete = open;
-            },
-
-            closeManagedDeleteConfirmations() {
-                for (const subscription of this.managedSubscriptions) {
-                    if (subscription.confirmDelete) this.setManagedDeleteConfirmation(subscription, false);
-                }
-            },
-
-            canDeleteManagedSubscription(subscription) {
-                return subscription.confirmDelete && subscription.deleteConfirmation === '删除订阅'
-                    && !this.managedRowBusy && !this.managedListBusy && !this.managedBusy;
-            },
-
-            async deleteManagedSubscription(subscription) {
-                if (!this.canDeleteManagedSubscription(subscription)) return;
-                this.managedRowBusy = true;
-                subscription.deleteStatus = '';
-                const code = subscription.code;
-                try {
-                    const response = await fetch('/manage-subscription-delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code, confirmation: subscription.deleteConfirmation })
-                    });
-                    if (response.status === 404 || response.status === 409) {
-                        subscription.deleteStatus = '这条订阅已变更，请刷新列表后核对。';
-                        return;
-                    }
-                    if (!response.ok || response.redirected || !(await response.json()).deleted) throw new Error('删除未确认，请刷新列表后核对。');
-                    this.managedSubscriptions = this.managedSubscriptions.filter(entry => entry.code !== code);
-                    this.managedListMessage = `已删除订阅「${subscription.displayName || '未识别'}」。`;
-                    if (this.managedCode === code) {
-                        this.managedLink = '';
-                        this.resetManagedEditor();
-                    }
-                } catch {
-                    subscription.deleteStatus = '删除未确认，请刷新列表后核对。';
-                } finally {
-                    subscription.deleteConfirmation = '';
-                    this.managedRowBusy = false;
-                }
-            },
-
-            async selectManagedSubscription(code) {
-                this.managedLink = `${window.location.origin}/c/${code}`;
-                await this.loadManagedSubscription();
-            },
-
-            resetManagedEditor() {
-                this.managedCode = '';
-                this.managedSourceTab = 'picker';
-                this.managedOriginalQuery = '';
-                this.managedSources = '';
-                this.managedPickedSources = '';
-                this.managedPickerBlocked = false;
-                this.managedRulePreset = 'keep';
-                this.managedSelectedRules = [];
-                this.managedMessage = '';
-                if (this.$refs.managedRuleOptions) this.$refs.managedRuleOptions.open = false;
-            },
-
-            cancelManagedSubscriptionEdit() {
-                if (!this.managedCode || this.managedBusy || this.managedRowBusy) return;
-                this.resetManagedEditor();
-                this.managedMessage = '已取消编辑，未保存的修改已丢弃。';
-            },
-
-            async loadManagedSubscription() {
-                this.resetManagedEditor();
-                try {
-                    const link = new URL(this.managedLink.trim());
-                    const match = link.pathname.match(/^\/[bcxs]\/([a-zA-Z0-9_-]+)$/);
-                    if (link.origin !== window.location.origin || !match || link.search || link.hash) throw new Error('请输入本站的完整固定订阅链接。');
-                    this.managedBusy = true;
-                    const response = await fetch(`/resolve?url=${encodeURIComponent(link.href)}`, { cache: 'no-store' });
-                    if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) throw new Error('读取失败，请确认链接正确并已登录。');
-                    const resolved = new URL((await response.json()).originalUrl);
-                    const sources = resolved.searchParams.get('config');
-                    if (resolved.origin !== window.location.origin || !sources) throw new Error('该链接没有可编辑的来源，请检查原配置。');
-                    this.managedCode = match[1];
-                    this.managedOriginalQuery = resolved.search;
-                    this.managedSources = sources;
-                    this.applyManagedRulePreset();
-                    this.managedMessage = '';
-                    setTimeout(() => document.getElementById('managedOriginalSources')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-                } catch (error) {
-                    this.managedMessage = error.message || '读取失败，请稍后重试。';
-                } finally {
-                    this.managedBusy = false;
-                }
-            },
-
-            applyManagedRulePreset() {
-                const presets = window.PREDEFINED_RULE_SETS;
-                const choice = this.managedRulePreset;
-                if (choice === 'custom') return;
-                if (choice !== 'keep') {
-                    this.managedSelectedRules = [...presets[choice]];
-                    return;
-                }
-
-                const raw = new URLSearchParams(this.managedOriginalQuery).get('selectedRules');
-                let rules = Object.hasOwn(presets, raw) ? presets[raw] : null;
-                if (!rules && raw) {
-                    try {
-                        const parsed = JSON.parse(raw);
-                        if (Array.isArray(parsed)) rules = parsed;
-                    } catch { /* Older links can omit the rule selection or store a preset name. */ }
-                }
-                this.managedSelectedRules = rules?.length ? rules.filter(name => presets.comprehensive.includes(name)) : [...presets.minimal];
-            },
-
-            managedOriginalSources() {
-                return new URLSearchParams(this.managedOriginalQuery).get('config') || '';
-            },
-
-            managedSourcesToSave() {
-                return this.managedPickedSources || this.managedSources;
-            },
-
-            managedSourceRows() {
-                const lines = this.managedSourcesToSave().split(/\r?\n/);
-                const indexes = sourceLineIndexes(lines);
-                const counts = new Map();
-                return indexes.map((index, position) => {
-                    const line = lines[index];
-                    const count = counts.get(line) || 0;
-                    counts.set(line, count + 1);
-                    return {
-                        key: `${count}\n${line}`,
-                        label: sourceLabel(line),
-                        first: position === 0,
-                        last: position === indexes.length - 1
-                    };
-                });
-            },
-
-            moveManagedSource(position, direction) {
-                if (this.managedBusy || this.managedRowBusy || this.managedPickerBlocked) return;
-                const current = this.managedSourcesToSave();
-                const lines = current.split(/\r?\n/);
-                const indexes = sourceLineIndexes(lines);
-                const from = indexes[position], to = indexes[position + direction];
-                if (from === undefined || to === undefined) return;
-                [lines[from], lines[to]] = [lines[to], lines[from]];
-                const reordered = lines.join(current.includes('\r\n') ? '\r\n' : '\n');
-                if (this.managedPickedSources) {
-                    this.managedPickedSources = reordered;
-                } else {
-                    this.managedSources = reordered;
-                }
-                this.managedMessage = '';
-            },
-
-            useManualManagedSources(value) {
-                this.managedSources = value;
-                this.managedPickedSources = '';
-                this.managedMessage = '';
-            },
-
-            async saveManagedSubscription() {
-                const sources = this.managedSourcesToSave().trim();
-                if (!this.managedCode || !sources || this.managedPickerBlocked || this.managedBusy || this.managedRowBusy) return;
-                const selectedRules = this.managedRulePreset === 'keep' ? undefined : [...new Set(this.managedSelectedRules)];
-                if (selectedRules?.length === 0) {
-                    this.managedMessage = '请至少选择一类规则，或选择保留原规则。';
-                    return;
-                }
-                this.managedBusy = true;
-                this.managedMessage = '';
-                try {
-                    const response = await fetch('/manage-subscription', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code: this.managedCode, originalQuery: this.managedOriginalQuery, sources, selectedRules })
-                    });
-                    if (response.status === 409) throw new Error('订阅已被其他操作修改，请重新载入后再保存。');
-                    if (!response.ok || response.redirected) throw new Error('保存失败，原链接未确认更新，请重新载入检查。');
-                    const result = await response.json();
-                    const params = new URLSearchParams(this.managedOriginalQuery);
-                    params.set('config', sources);
-                    if (selectedRules) params.set('selectedRules', JSON.stringify(selectedRules));
-                    this.managedOriginalQuery = `?${params.toString()}`;
-                    this.managedSources = sources;
-                    this.managedPickedSources = '';
-                    this.managedRulePreset = 'keep';
-                    this.managedMessage = result.updated ? '已保存。固定链接不变，客户端更新订阅后生效。' : '内容没有变化，固定链接保持不变。';
-                } catch (error) {
-                    this.managedMessage = error.message || '保存失败，请重新载入检查。';
-                } finally {
-                    this.managedBusy = false;
-                }
-            },
-
             async shortenLinks() {
                 // Check if links are already shortened
                 if (this.shortenedLinks) {
@@ -888,15 +439,12 @@ export const formLogicFn = (t) => {
                     // Shorten each link type
                     for (const [type, url] of Object.entries(this.generatedLinks)) {
                         try {
-                            let apiUrl = `${origin}/shorten-v2?url=${encodeURIComponent(url)}`;
-
-                            // For the first request, either use custom code or let backend generate
-                            // For subsequent requests, use the code from first request
-                            if (shortCode) {
-                                apiUrl += `&shortCode=${encodeURIComponent(shortCode)}`;
-                            }
-
-                            const response = await fetch(apiUrl);
+                            // First request: custom code or backend-generated; later ones reuse it
+                            const response = await fetch(`${origin}/shorten-v2`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(shortCode ? { url, shortCode } : { url })
+                            });
                             if (!response.ok) {
                                 throw new Error(`Failed to shorten ${type} link`);
                             }
@@ -925,32 +473,12 @@ export const formLogicFn = (t) => {
                     }
 
                     this.shortenedLinks = shortened;
-                    if (this.newSubscriptionRemark.trim()) {
-                        const saved = await fetch('/manage-subscription-remark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: shortCode, remark: this.newSubscriptionRemark }) });
-                        if (!saved.ok) alert('短链接已生成，但备注保存失败。你可以在上方已有订阅中重新设置备注。');
-                        else { this.newSubscriptionRemark = ''; await this.refreshManagedSubscriptions(); }
-                    }
                 } catch (error) {
                     console.error('Error shortening links:', error);
                     alert(window.APP_TRANSLATIONS.shortenFailed);
                 } finally {
                     this.shortening = false;
                 }
-            },
-
-            showQr(type) {
-                const url = (this.shortenedLinks || this.generatedLinks)?.[type];
-                if (!url || typeof window.qrcode !== 'function') return;
-                this.qrCodeUrl = url;
-                this.qrCodeLabel = ({ xray: 'Xray', singbox: 'Sing-box', clash: 'Clash', surge: 'Surge' })[type] || type;
-                setTimeout(() => {
-                    const container = document.getElementById('subscription-qr-code');
-                    if (!container) return;
-                    const code = window.qrcode(0, 'M');
-                    code.addData(url);
-                    code.make();
-                    container.innerHTML = code.createImgTag(5, 8);
-                }, 0);
             },
 
             // Handle input change with debounce
@@ -1035,7 +563,6 @@ export const formLogicFn = (t) => {
                     }
 
                     // Now parse the full URL and populate form
-                    if (this.inputFromSourcePicker || this.input.trim() !== text) return;
                     this.populateFormFromUrl(urlToParse);
 
                     // Show a success message

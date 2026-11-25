@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
 kv_namespaces = [
-  { binding = "SUBLINK_KV", id = "40be652c162546aaadac4553aad22ef3" }
+  { binding = "SUBLINK_KV", id = "51ad66ceb6904c2ba9d19feddfa64986" }
 ]
 
 [assets]

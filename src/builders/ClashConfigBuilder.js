@@ -169,6 +169,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     alterId: proxy.alter_id ?? 0,
                     cipher: proxy.security,
                     tls: proxy.tls?.enabled || false,
+                    'client-fingerprint': proxy.tls?.utls?.fingerprint,
                     servername: proxy.tls?.server_name || '',
                     'skip-cert-verify': !!proxy.tls?.insecure,
                     network: proxy.transport?.type || proxy.network || 'tcp',
@@ -210,6 +211,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     server: proxy.server,
                     port: proxy.server_port,
                     uuid: proxy.uuid,
+                    ...(proxy.encryption ? { encryption: proxy.encryption } : {}),
                     cipher: proxy.security,
                     tls: proxy.tls?.enabled || false,
                     'client-fingerprint': proxy.tls?.utls?.fingerprint,
@@ -219,12 +221,15 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                         path: proxy.transport.path,
                         headers: proxy.transport.headers
                     } : undefined,
+                    'xhttp-opts': proxy.transport?.type === 'xhttp' ? {
+                        path: proxy.transport.path,
+                        host: proxy.transport.headers?.host,
+                        mode: proxy.transport.mode
+                    } : undefined,
                     'reality-opts': proxy.tls?.reality?.enabled ? {
                         'public-key': proxy.tls.reality.public_key,
                         'short-id': proxy.tls.reality.short_id,
-						...(proxy.tls.reality.support_x25519mlkem768
-							? { 'support-x25519mlkem768': true }
-							: {}),
+                        'support-x25519mlkem768': proxy.tls.reality.support_x25519mlkem768,
                     } : undefined,
                     'grpc-opts': proxy.transport?.type === 'grpc' ? {
                         'grpc-service-name': proxy.transport.service_name,
@@ -275,9 +280,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     'reality-opts': proxy.tls?.reality?.enabled ? {
                         'public-key': proxy.tls.reality.public_key,
                         'short-id': proxy.tls.reality.short_id,
-						...(proxy.tls.reality.support_x25519mlkem768
-							? { 'support-x25519mlkem768': true }
-							: {}),
+                        'support-x25519mlkem768': proxy.tls.reality.support_x25519mlkem768,
                     } : undefined,
                     'grpc-opts': proxy.transport?.type === 'grpc' ? {
                         'grpc-service-name': proxy.transport.service_name,
@@ -306,7 +309,10 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     ...(proxy.reduce_rtt !== undefined ? { 'reduce-rtt': proxy.reduce_rtt } : {}),
                     ...(proxy.fast_open !== undefined ? { 'fast-open': proxy.fast_open } : {}),
                 };
-            case 'anytls':
+            case 'anytls': {
+                const idleSessionCheckInterval = proxy['idle-session-check-interval'] ?? proxy.idle_session_check_interval;
+                const idleSessionTimeout = proxy['idle-session-timeout'] ?? proxy.idle_session_timeout;
+                const minIdleSession = proxy['min-idle-session'] ?? proxy.min_idle_session;
                 return {
                     name: proxy.tag,
                     type: 'anytls',
@@ -318,10 +324,11 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     ...(proxy.tls?.server_name ? { sni: proxy.tls.server_name } : {}),
                     ...(proxy.tls?.insecure !== undefined ? { 'skip-cert-verify': !!proxy.tls.insecure } : {}),
                     ...(proxy.tls?.alpn ? { alpn: proxy.tls.alpn } : {}),
-                    ...(proxy['idle-session-check-interval'] !== undefined ? { 'idle-session-check-interval': proxy['idle-session-check-interval'] } : {}),
-                    ...(proxy['idle-session-timeout'] !== undefined ? { 'idle-session-timeout': proxy['idle-session-timeout'] } : {}),
-                    ...(proxy['min-idle-session'] !== undefined ? { 'min-idle-session': proxy['min-idle-session'] } : {}),
+                    ...(idleSessionCheckInterval !== undefined ? { 'idle-session-check-interval': idleSessionCheckInterval } : {}),
+                    ...(idleSessionTimeout !== undefined ? { 'idle-session-timeout': idleSessionTimeout } : {}),
+                    ...(minIdleSession !== undefined ? { 'min-idle-session': minIdleSession } : {}),
                 };
+            }
             default:
                 return proxy; // Return as-is if no specific conversion is defined
         }

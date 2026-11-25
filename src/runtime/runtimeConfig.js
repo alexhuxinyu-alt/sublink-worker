@@ -44,9 +44,7 @@ export function normalizeRuntime(runtime = {}) {
             authUsername: runtime.config?.authUsername,
             authPassword: runtime.config?.authPassword,
             authSessionSecret: runtime.config?.authSessionSecret,
-            authSessionHours: runtime.config?.authSessionHours ?? 24,
-            sourceBridgeOrigin: runtime.config?.sourceBridgeOrigin,
-            sourceBridgeToken: runtime.config?.sourceBridgeToken
+            authSessionHours: runtime.config?.authSessionHours ?? 24
         }
     };
 }

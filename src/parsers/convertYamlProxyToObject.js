@@ -1,7 +1,9 @@
+import { parseBool } from '../utils.js';
+
 export function convertYamlProxyToObject(p) {
     if (!p || typeof p !== 'object' || !p.type) return null;
     const type = String(p.type).toLowerCase();
-    const name = String(p.name || p.tag || 'proxy').trim();
+    const name = p.name || p.tag || 'proxy';
     const toArray = (value) => {
         if (value === undefined || value === null) return undefined;
         return Array.isArray(value) ? value : [value];
@@ -71,18 +73,21 @@ export function convertYamlProxyToObject(p) {
         case 'vless': {
             const tlsEnabled = !!p.tls;
             const reality = p['reality-opts'];
+            const supportX25519Mlkem768 = parseBool(reality?.['support-x25519mlkem768']);
             const tls = tlsEnabled
                 ? {
                     enabled: true,
                     server_name: p.servername || p.sni,
                     insecure: !!p['skip-cert-verify'],
-					...(reality
-						? { reality: {
-							enabled: true,
-							public_key: reality['public-key'],
-							short_id: reality['short-id'],
-							...(reality['support-x25519mlkem768'] ? { support_x25519mlkem768: true } : {})
-						} }
+                    ...(reality
+                        ? {
+                            reality: {
+                                enabled: true,
+                                public_key: reality['public-key'],
+                                short_id: reality['short-id'],
+                                ...(supportX25519Mlkem768 !== undefined ? { support_x25519mlkem768: supportX25519Mlkem768 } : {})
+                            }
+                        }
                         : {})
                 }
                 : { enabled: false };
@@ -110,6 +115,10 @@ export function convertYamlProxyToObject(p) {
                     const h2 = p['h2-opts'] || {};
                     return { type: 'h2', path: h2.path, host: h2.host };
                 }
+                if (net === 'xhttp') {
+                    const x = p['xhttp-opts'] || {};
+                    return { type: 'xhttp', path: x.path, ...(x.host ? { headers: { host: x.host } } : {}), mode: x.mode };
+                }
                 return undefined;
             })();
             return {
@@ -123,6 +132,7 @@ export function convertYamlProxyToObject(p) {
                 transport,
                 network: transport?.type || 'tcp',
                 flow: p.flow ?? undefined,
+                ...(p.encryption && p.encryption !== 'none' ? { encryption: p.encryption } : {}),
                 udp: typeof p.udp !== 'undefined' ? !!p.udp : undefined,
                 packet_encoding: p['packet-encoding'],
                 alpn: toArray(p.alpn)
@@ -131,18 +141,21 @@ export function convertYamlProxyToObject(p) {
         case 'trojan': {
             const tlsEnabled = !!p.tls;
             const reality = p['reality-opts'];
+            const supportX25519Mlkem768 = parseBool(reality?.['support-x25519mlkem768']);
             const tls = tlsEnabled
                 ? {
                     enabled: true,
                     server_name: p.servername || p.sni,
                     insecure: !!p['skip-cert-verify'],
-					...(reality
-						? { reality: {
-							enabled: true,
-							public_key: reality['public-key'],
-							short_id: reality['short-id'],
-							...(reality['support-x25519mlkem768'] ? { support_x25519mlkem768: true } : {})
-						} }
+                    ...(reality
+                        ? {
+                            reality: {
+                                enabled: true,
+                                public_key: reality['public-key'],
+                                short_id: reality['short-id'],
+                                ...(supportX25519Mlkem768 !== undefined ? { support_x25519mlkem768: supportX25519Mlkem768 } : {})
+                            }
+                        }
                         : {})
                 }
                 : { enabled: false };
@@ -213,7 +226,7 @@ export function convertYamlProxyToObject(p) {
                 recv_window_conn: p['recv-window-conn'],
                 up: p.up,
                 down: p.down,
-                ports: p.ports,
+                ports: p.mport || p.ports,
                 hop_interval: Number.isNaN(hopInterval) ? hopIntervalRaw : hopInterval,
                 alpn: toArray(p.alpn),
                 fast_open: typeof p['fast-open'] !== 'undefined' ? !!p['fast-open'] : undefined

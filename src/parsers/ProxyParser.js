@@ -4,6 +4,7 @@ import { parseVless } from './protocols/vlessParser.js';
 import { parseHysteria2 } from './protocols/hysteria2Parser.js';
 import { parseTrojan } from './protocols/trojanParser.js';
 import { parseTuic } from './protocols/tuicParser.js';
+import { parseAnytls } from './protocols/anytlsParser.js';
 import { fetchSubscription } from './subscription/httpSubscriptionFetcher.js';
 
 const protocolParsers = {
@@ -16,7 +17,8 @@ const protocolParsers = {
     http: fetchSubscription,
     https: fetchSubscription,
     trojan: parseTrojan,
-    tuic: parseTuic
+    tuic: parseTuic,
+    anytls: parseAnytls
 };
 
 export class ProxyParser {
@@ -25,11 +27,19 @@ export class ProxyParser {
             return undefined;
         }
         const trimmed = url.trim();
-        const type = trimmed.split('://')[0];
+        const type = trimmed.split('://')[0].toLowerCase();
         const parser = protocolParsers[type];
         if (!parser) {
             return undefined;
         }
-        return parser(trimmed, userAgent);
+        try {
+            return await parser(trimmed, userAgent);
+        } catch (error) {
+            // One malformed link must not fail the whole request or, inside a
+            // subscription, drop every link after it. The link is not logged
+            // because it carries credentials.
+            console.warn(`Skipping malformed ${type} link:`, error?.message || error);
+            return undefined;
+        }
     }
 }

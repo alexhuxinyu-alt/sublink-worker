@@ -14,8 +14,4 @@ export class CloudflareKVAdapter {
     async delete(key) {
         return this.binding.delete(key);
     }
-
-    async list(options = {}) {
-        return this.binding.list(options);
-    }
 }
